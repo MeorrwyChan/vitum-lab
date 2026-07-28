@@ -25,7 +25,11 @@ async function sendAffiliateStatements(results: { statements: number; errors: nu
     timeZone: "UTC",
   });
 
-  const { data: affs } = await supabaseAdmin.from("affiliates").select("id, email, code");
+  // Curated affiliates only. Self-serve referral rows (is_referral=true) carry
+  // commission_percent = 0, so they'd be emailed a commission statement reading
+  // "$0.00 owed" that contradicts the bounty their /referral dashboard shows —
+  // and its CTA links to /affiliate/dashboard, which requireAffiliate denies them.
+  const { data: affs } = await supabaseAdmin.from("affiliates").select("id, email, code").eq("is_referral", false);
   if (!affs || affs.length === 0) return;
   const { data: payouts } = await supabaseAdmin.from("affiliate_payouts").select("affiliate_id, amount");
 
@@ -124,6 +128,10 @@ export default async function handler(req: any, res: any) {
         cancel_reason: "auto-expired: payment not received in time",
       })
       .eq("status", "pending")
+      // Mirrors expire_stale_orders(): a stamped row may have money sitting at
+      // the processor (Square captured, confirmation failed / response lost), so
+      // it must be reconciled by a human, never auto-cancelled.
+      .is("payment_captured_at", null)
       .lt("created_at", cutoff24)
       .or("payment_method.is.null,payment_method.eq.crypto,payment_method.eq.square")
       .select(ORDER_COLS);
@@ -137,6 +145,7 @@ export default async function handler(req: any, res: any) {
         cancel_reason: "auto-expired: payment not received in time",
       })
       .eq("status", "pending")
+      .is("payment_captured_at", null)
       .lt("created_at", cutoffManual)
       .in("payment_method", MANUAL_METHODS)
       .select(ORDER_COLS);
@@ -215,6 +224,16 @@ export default async function handler(req: any, res: any) {
         try {
           const status = await getTrackingStatus(o.tracking_number as string);
           if (status === "DELIVERED") {
+            // Email BEFORE flipping fulfillment_status. The other order is a
+            // one-shot: this query only matches `shipped` rows, so once the row
+            // is marked delivered a transient SMTP failure can never be retried
+            // and the customer simply never learns their order arrived. Sending
+            // first means a failure leaves the row `shipped` and the next hourly
+            // run retries it; sendOrderEvent is idempotent (claim_email), so a
+            // failure of the *update* can't produce a duplicate email either.
+            // Neither template reads delivered_at, so the pre-update row is fine.
+            await sendOrderEvent(o as EmailOrder, "delivered");
+            await sendOrderEvent(o as EmailOrder, "admin_delivered");
             await supabaseAdmin
               .from("orders")
               .update({
@@ -222,8 +241,6 @@ export default async function handler(req: any, res: any) {
                 delivered_at: new Date().toISOString(),
               })
               .eq("id", o.id);
-            await sendOrderEvent(o as EmailOrder, "delivered");
-            await sendOrderEvent(o as EmailOrder, "admin_delivered");
             results.delivered++;
           }
         } catch (err) {

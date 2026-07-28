@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "./_lib/supabase-admin.js";
-import { promoRedemptionCount } from "./_lib/pricing.js";
+import { countPromoRedemptions } from "./_lib/promoUsage.js";
 import { getRewardConfig } from "./_lib/credit.js";
 import { requireUser } from "./_lib/requireUser.js";
 
@@ -106,13 +106,7 @@ export default async function handler(req: any, res: any) {
       // promo's created_at, so deleting + recreating the code resets it.
       const perCustomerLimit = promo.per_customer_limit == null ? 1 : Number(promo.per_customer_limit);
       if (perCustomerLimit > 0) {
-        const { data: prior } = await supabaseAdmin
-          .from("orders")
-          .select("email, discount_code")
-          .ilike("discount_code", normalized)
-          .in("status", ["confirmed", "finished"])
-          .gte("created_at", promo.created_at ?? "1970-01-01T00:00:00Z");
-        if (promoRedemptionCount(prior ?? [], email, normalized) >= perCustomerLimit) {
+        if ((await countPromoRedemptions(email, normalized, promo.created_at)) >= perCustomerLimit) {
           res.status(400).json({
             valid: false,
             error: perCustomerLimit === 1

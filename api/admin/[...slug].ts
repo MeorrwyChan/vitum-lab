@@ -6,7 +6,7 @@ import { buyLabel, getTrackingStatus, shippoConfigured, shipFromConfigured, ship
 import { getRewardConfig, earnLoyalty, grantReferralReward, releaseDiscountRedemption } from "../_lib/credit.js";
 import { cancelOrder, confirmPaidOrder, sendConfirmationEmails, ORDER_COLS } from "../_lib/fulfillment.js";
 import { squareConfigured } from "../_lib/square.js";
-import { orderCashDue, round2 } from "../_lib/pricing.js";
+import { orderCashDue, round2, isSitewideActive } from "../_lib/pricing.js";
 import { isManualPaymentMethod } from "../_lib/paymentConfig.js";
 import { estimateNowPaymentUsd, estimatedUsdCoversOrder, verifyNowPayment } from "../_lib/nowPayments.js";
 import { VT_LOGO_PNG_B64 } from "../_lib/vt-logo.js";
@@ -95,14 +95,45 @@ async function notifyWaitlist(cartCode: string) {
   const baseUrl = process.env.BASE_URL || "https://vitumlab.com";
   const url = slug ? `${baseUrl}/shop/${slug}` : `${baseUrl}/shop`;
 
+  // Mark only the rows we actually emailed. Blanket-updating by cart_code burned
+  // the "notify me" signal for every subscriber whose send threw — they stay
+  // subscribed-but-notified forever and never hear that the item came back.
+  // Failed rows keep notified_at NULL so the next 0 → in-stock save retries them.
+  const notified: string[] = [];
   for (const s of subs) {
     try {
       await sendBackInStock(s.email as string, { name, url, image });
+      notified.push(s.id as string);
     } catch (err) {
       console.error(`back-in-stock email failed for waitlist row ${s.id}:`, err);
     }
   }
-  await supabaseAdmin.from("stock_waitlist").update({ notified_at: new Date().toISOString() }).eq("cart_code", cartCode).is("notified_at", null);
+  if (notified.length > 0) {
+    await supabaseAdmin.from("stock_waitlist").update({ notified_at: new Date().toISOString() }).in("id", notified);
+  }
+}
+
+/**
+ * Every variant needs an `inventory` row — that table is the sole source of
+ * availability, and nothing else creates rows for it.
+ *
+ * Without this, a newly added variant has no row, so `/api/inventory` omits its
+ * cartCode and the storefront's `isAvailable` falls back to its fail-open
+ * default (`stock[cartCode] ?? 1`) — the variant advertises as in stock and Add
+ * to Cart works, but checkout's stock lookup rejects the line and the order can
+ * never complete. Seeding at stock 0 makes it honestly show "Out of Stock" until
+ * the admin sets a real count in Admin → Inventory.
+ *
+ * ignoreDuplicates keeps this a no-op for cart codes that already have stock.
+ */
+async function ensureInventoryRows(variants: Record<string, unknown>[]) {
+  const codes = [...new Set(variants.map(v => String(v.cart_code ?? "").trim()).filter(Boolean))];
+  if (codes.length === 0) return;
+  const { error } = await supabaseAdmin.from("inventory").upsert(
+    codes.map(cart_code => ({ cart_code, stock: 0, is_active: true })),
+    { onConflict: "cart_code", ignoreDuplicates: true }
+  );
+  if (error) console.error("Failed to seed inventory rows:", error);
 }
 
 // Handles all /api/admin/* routes: inventory, orders, products, upload
@@ -870,12 +901,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!ids?.length) return res.status(400).json({ error: "No orders selected" });
     if (type !== "labels" && type !== "slips") return res.status(400).json({ error: "Invalid PDF type" });
 
-    const { data: rows } = await supabaseAdmin.from("orders").select("id, email, items, net_amount, shipping_amount, shipping_address, label_url, tracking_number, carrier, created_at").in("id", ids.slice(0, 100));
+    const { data: rows } = await supabaseAdmin.from("orders").select("id, email, items, net_amount, shipping_amount, credit_applied, shipping_address, label_url, tracking_number, carrier, created_at").in("id", ids.slice(0, 100));
     const orders = ids.map(id => (rows ?? []).find((r: { id: string }) => r.id === id)).filter(Boolean) as Array<{
       id: string;
       items: { name: string; dose: string; quantity: number; cartCode?: string }[] | null;
       net_amount: number | string;
       shipping_amount: number | string | null;
+      credit_applied: number | string | null;
       shipping_address: Record<string, string> | null;
       label_url: string | null;
       tracking_number: string | null;
@@ -1060,7 +1092,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Total
       need(15);
       page.drawText("TOTAL", { x: M, y, size: 13, font: bold, color: black });
-      const tot = money((Number(o.net_amount) || 0) + (Number(o.shipping_amount) || 0));
+      // Cash actually due — store credit is tender, so a credit-settled order
+      // must not print a TOTAL the customer was never charged. Same helper the
+      // emails, admin rows, and the IPN amount guard use.
+      const tot = money(orderCashDue(o.net_amount, o.shipping_amount, o.credit_applied));
       page.drawText(tot, {
         x: PW - M - bold.widthOfTextAtSize(tot, 13),
         y,
@@ -1155,7 +1190,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .trim(),
         instructions: String(b[k]?.instructions ?? "").slice(0, 500),
       });
+      // payment_config is a single JSONB column that also carries keys this form
+      // doesn't manage — notably `blocked_states`, the server-side ship-to-state
+      // blocklist enforced at checkout (set via SQL, no admin UI). A bare
+      // whole-column write would silently destroy them, disabling a compliance
+      // control with no error anywhere, so merge over whatever is stored today.
+      const { data: existing } = await supabaseAdmin.from("store_settings").select("payment_config").maybeSingle();
       const payment_config = {
+        ...((existing?.payment_config ?? {}) as Record<string, unknown>),
         square: { enabled: !!b.square?.enabled },
         zelle: manual("zelle"),
         cashapp: manual("cashapp"),
@@ -1517,7 +1559,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Enabling a site-wide sale clears every per-variant sale price so the
       // site-wide promo is the only sale in effect (it always takes precedence).
-      if (active) {
+      // Gate on isSitewideActive, NOT the raw `active` flag: every price reader
+      // also requires the schedule window, so clearing on a *future*-dated sale
+      // would destroy the per-variant prices immediately while the site-wide one
+      // isn't live yet — raising prices for the whole gap between save and start.
+      if (isSitewideActive(data)) {
         const { data: prods } = await supabaseAdmin.from("products").select("id, variants");
         for (const p of prods ?? []) {
           const variants = ((p.variants as Record<string, unknown>[]) ?? []).map(v => ({
@@ -1711,6 +1757,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select()
         .single();
       if (error) return res.status(400).json({ error: error.message });
+      await ensureInventoryRows(variants.variants);
       return res.json(data);
     }
 
@@ -1740,6 +1787,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const { data, error } = await supabaseAdmin.from("products").update(allowed).eq("id", id).select().single();
       if (error) return res.status(400).json({ error: error.message });
+      if (allowed.variants !== undefined) await ensureInventoryRows(allowed.variants as Record<string, unknown>[]);
       return res.json(data);
     }
 
