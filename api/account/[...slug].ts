@@ -151,10 +151,14 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const buyerDiscount = Math.max(0, Math.min(100, Number(cfg.referral_buyer_discount) || 10));
-    const bountyOrders = Math.max(1, Number(cfg.referral_bounty_orders) || 5);
-    const bountyAmount = Math.max(0, Number(cfg.referral_bounty_amount) || 100);
-    const minOrder = Math.max(0, Number(cfg.referral_min_order) || 0);
+    // `??` not `||` — 0 is a legal configured value (the admin PUT and the DB
+    // CHECK both allow it), and `Number(0) || 10` would silently resurrect the
+    // 10% default, minting referral codes that discount orders the owner set to
+    // 0%. Mirrors api/public/[...slug].ts, which already uses `??`.
+    const buyerDiscount = Math.max(0, Math.min(100, Number(cfg.referral_buyer_discount ?? 10)));
+    const bountyOrders = Math.max(1, Number(cfg.referral_bounty_orders ?? 5));
+    const bountyAmount = Math.max(0, Number(cfg.referral_bounty_amount ?? 100));
+    const minOrder = Math.max(0, Number(cfg.referral_min_order ?? 0));
 
     // 0) Already a curated affiliate? The affiliates table is one-code-per-email,
     // so we can't mint a second (referral) code for this account — and they don't
@@ -207,8 +211,16 @@ export default async function handler(req: any, res: any) {
           .toUpperCase()
           .replace(/[^A-Z0-9]/g, "")
           .slice(0, 12) || "REF";
-      const { data: taken } = await supabaseAdmin.from("affiliates").select("code").ilike("code", `${base}%`);
-      const takenSet = new Set((taken ?? []).map((r: any) => String(r.code).toUpperCase()));
+      // Reserve across BOTH code namespaces. The affiliates UNIQUE constraint
+      // only protects against affiliate-vs-affiliate collisions, but checkout
+      // resolves affiliate codes BEFORE promo_codes — so a self-minted referral
+      // code that happens to equal a store promo code would shadow it (customers
+      // typing the advertised promo silently get the referral's discount instead,
+      // and the order is attributed to the referrer). The seed is user-controlled
+      // (user_metadata.full_name is self-writable via auth.updateUser), so this
+      // has to be an explicit check rather than an accident of naming.
+      const [{ data: takenAff }, { data: takenPromo }] = await Promise.all([supabaseAdmin.from("affiliates").select("code").ilike("code", `${base}%`), supabaseAdmin.from("promo_codes").select("code").ilike("code", `${base}%`)]);
+      const takenSet = new Set([...(takenAff ?? []), ...(takenPromo ?? [])].map((r: any) => String(r.code).toUpperCase()));
 
       // Candidate stream: BASE, BASE2, BASE3, … then BASE+4 random chars as a
       // collision-proof fallback so we always terminate.

@@ -401,7 +401,8 @@ export default function Checkout() {
             method: data.method,
             handle: cfg?.handle ?? "",
             instructions: cfg?.instructions ?? "",
-            amount: total.toFixed(2),
+            // Server-authoritative amount — the client total is only a preview.
+            amount: Number(data.amountDue ?? total).toFixed(2),
             orderId: data.orderId,
             expiresAt: data.expiresAt,
           });

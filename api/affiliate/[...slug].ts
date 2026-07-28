@@ -20,6 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const orders: {
       net_amount: number | string | null;
       discount_amount: number | string | null;
+      discount_breakdown: unknown;
       commission_amount: number | string | null;
       status: string;
       created_at: string;
@@ -27,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (let from = 0; ; from += 1000) {
       const { data, error } = await supabaseAdmin
         .from("orders")
-        .select("net_amount, discount_amount, commission_amount, status, created_at")
+        .select("net_amount, discount_amount, discount_breakdown, commission_amount, status, created_at")
         .eq("affiliate_id", affiliate.id)
         .in("status", ["confirmed", "finished"])
         .order("created_at", { ascending: true })
@@ -38,7 +39,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const totalOrders = orders.length;
     const revenue = orders.reduce((s, o) => s + Number(o.net_amount || 0), 0);
-    const discountsGiven = orders.reduce((s, o) => s + Number(o.discount_amount || 0), 0);
+    // Only the affiliate's own code line — orders.discount_amount is the STACKED
+    // total (quantity tier + code), so using it here billed the store's volume
+    // discount to the affiliate. On a 6-unit $200 order with the 12% tier and a
+    // 10% code that reads $41.60 instead of the $17.60 the code actually gave.
+    // Legacy rows predating discount_breakdown fall back to the stacked total.
+    const discountsGiven = orders.reduce((s, o) => {
+      const lines = Array.isArray(o.discount_breakdown) ? (o.discount_breakdown as { type?: string; amount?: number | string }[]) : null;
+      if (!lines) return s + Number(o.discount_amount || 0);
+      return s + lines.filter(l => l?.type === "affiliate").reduce((n, l) => n + (Number(l.amount) || 0), 0);
+    }, 0);
     const commission = orders.reduce((s, o) => s + Number(o.commission_amount ?? (Number(o.net_amount || 0) * affiliate.commission_percent) / 100), 0);
 
     const days: Record<string, number> = {};

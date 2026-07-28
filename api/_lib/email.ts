@@ -246,7 +246,7 @@ function orderBox(order: EmailOrder, images?: Record<string, string>): string {
   const rows = items.map((it) => {
     const img = images?.[it.cartCode];
     const thumb = img
-      ? `<img src="${img}" width="40" height="40" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;display:block;" />`
+      ? `<img src="${esc(img)}" width="40" height="40" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;display:block;" />`
       : `<div style="width:40px;height:40px;border-radius:8px;background:#eef0f3;"></div>`;
     return `
           <tr>
@@ -540,14 +540,14 @@ const inventoryInbox = () => process.env.INVENTORY_EMAIL || process.env.GMAIL_US
 
 export async function sendBackInStock(to: string, opts: { name: string; url: string; image?: string }) {
   const thumb = opts.image
-    ? `<div style="margin:0 0 20px;"><img src="${absoluteUrl(opts.image)}" width="72" height="72" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb;" /></div>`
+    ? `<div style="margin:0 0 20px;"><img src="${esc(absoluteUrl(opts.image))}" width="72" height="72" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb;" /></div>`
     : "";
   await send(
     to,
     `Back in stock: ${opts.name}`,
     layout(
       pill("Back in Stock", "#edfaf3", "#1a7a4a") +
-      heading(`${opts.name} is back in stock`, "The item you asked about is available again. Quantities can be limited, so order soon to secure yours.") +
+      heading(`${esc(opts.name)} is back in stock`, "The item you asked about is available again. Quantities can be limited, so order soon to secure yours.") +
       thumb +
       button("Shop Now", opts.url) +
       `<p style="margin:0;font-size:13px;color:#888;line-height:1.6;">You're receiving this because you asked to be notified when this item returned. No further emails about it will be sent.</p>`,
@@ -569,7 +569,7 @@ export async function sendAffiliateCommission(
       `You earned ${money(affiliate.commission)} in commission`,
       layout(
         pill("Commission Earned", "#edfaf3", "#1a7a4a") +
-        heading(`You earned ${money(affiliate.commission)}`, `A customer just completed an order using your code <b>${affiliate.code}</b>. Your commission on order ${formatOrderId(order.id)} is <b>${money(affiliate.commission)}</b>.`) +
+        heading(`You earned ${money(affiliate.commission)}`, `A customer just completed an order using your code <b>${esc(affiliate.code)}</b>. Your commission on order ${formatOrderId(order.id)} is <b>${money(affiliate.commission)}</b>.`) +
         button("Open Affiliate Dashboard", `${baseUrl()}/affiliate/dashboard`),
       ),
     );
@@ -593,7 +593,7 @@ export async function sendAffiliateStatement(
     `Your ${s.monthLabel} affiliate statement`,
     layout(
       pill("Monthly Statement", "#eaf1fd", "#2c5fdb") +
-      heading(`${s.monthLabel} summary`, `Here's how your code <b>${s.code}</b> performed last month.`) +
+      heading(`${esc(s.monthLabel)} summary`, `Here's how your code <b>${esc(s.code)}</b> performed last month.`) +
       `<div style="background:#f7f8fa;border-radius:10px;padding:16px 20px;margin-bottom:24px;"><table style="width:100%;border-collapse:collapse;">
         ${row("Orders", String(s.orders))}
         ${row("Commission earned", money(s.commission), "#1a7a4a")}
@@ -611,7 +611,7 @@ export async function sendLowStockDigest(rows: { cartCode: string; stock: number
   const list = rows
     .map((r) => `
           <tr>
-            <td style="padding:7px 0;font-family:monospace;font-size:13px;color:#333;">${r.cartCode}</td>
+            <td style="padding:7px 0;font-family:monospace;font-size:13px;color:#333;">${esc(r.cartCode)}</td>
             <td style="padding:7px 0;font-size:13px;font-weight:700;text-align:right;color:${r.stock === 0 ? "#c0392b" : "#9a6b15"};">${r.stock === 0 ? "OUT OF STOCK" : `${r.stock} left`}</td>
           </tr>`)
     .join("");

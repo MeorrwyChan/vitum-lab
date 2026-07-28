@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "./_lib/supabase-admin.js";
-import { sendOrderEvent, deferEmail, type EmailOrder } from "./_lib/email.js";
-import { grossFromItems, commissionAmount as calcCommission, isFreeOrder, applyCredit, isPromoUsable, promoRedemptionCount, computeStackedDiscounts, sitewideSalePrice, isSitewideActive, shippingFee, SHIPPING_PROTECTION_FEE, type QuantityTier } from "./_lib/pricing.js";
+import { sendOrderEvent, deferEmail, notifyAdmin, type EmailOrder } from "./_lib/email.js";
+import { grossFromItems, commissionAmount as calcCommission, isFreeOrder, applyCredit, isPromoUsable, computeStackedDiscounts, sitewideSalePrice, isSitewideActive, shippingFee, SHIPPING_PROTECTION_FEE, type QuantityTier } from "./_lib/pricing.js";
+import { countPromoRedemptions } from "./_lib/promoUsage.js";
 import { getBalance, reserveCredit, reserveDiscountRedemption, releaseDiscountRedemption, getRewardConfig, type RewardConfig } from "./_lib/credit.js";
 import { validateAddress } from "./_lib/shippo.js";
 import { buildOrderId } from "./_lib/orderId.js";
@@ -36,7 +37,11 @@ function validText(value: unknown, maxLength: number, required = true): boolean 
  * price, else the base price.
  */
 async function loadCatalog(): Promise<Record<string, { name: string; dose: string; price: number }>> {
-  const [{ data: products }, { data: settings }] = await Promise.all([supabaseAdmin.from("products").select("name, variants"), supabaseAdmin.from("store_settings").select("sitewide_active, sitewide_percent, sitewide_starts_at, sitewide_ends_at").maybeSingle()]);
+  // `.eq("is_active", true)` mirrors /api/products — without it, deactivating a
+  // product in Admin → Products hides it from the storefront but leaves it fully
+  // purchasable here (a stale localStorage cart or a hand-crafted POST still
+  // prices, charges, and decrements stock for a withdrawn product).
+  const [{ data: products }, { data: settings }] = await Promise.all([supabaseAdmin.from("products").select("name, variants").eq("is_active", true), supabaseAdmin.from("store_settings").select("sitewide_active, sitewide_percent, sitewide_starts_at, sitewide_ends_at").maybeSingle()]);
 
   const sitewidePct = isSitewideActive(settings) ? Number(settings!.sitewide_percent) : null;
   const now = new Date();
@@ -366,13 +371,7 @@ export default async function handler(req: any, res: any) {
       // Codes are A–Z0–9 so ILIKE on the code is safe; the exact email match is
       // done in JS (emails can contain ILIKE wildcards like "_").
       if (promoPerCustomerLimit > 0) {
-        const { data: prior } = await supabaseAdmin
-          .from("orders")
-          .select("email, discount_code")
-          .ilike("discount_code", discountCodeNorm!)
-          .in("status", ["confirmed", "finished"])
-          .gte("created_at", promoRow?.created_at ?? "1970-01-01T00:00:00Z");
-        if (promoRedemptionCount(prior ?? [], email, discountCodeNorm!) >= promoPerCustomerLimit) {
+        if ((await countPromoRedemptions(email, discountCodeNorm!, promoRow?.created_at)) >= promoPerCustomerLimit) {
           res.status(400).json({
             error: promoPerCustomerLimit === 1 ? "You've already used this promo code — it's limited to one use per customer." : `You've reached the ${promoPerCustomerLimit}-use limit for this promo code.`,
           });
@@ -693,6 +692,13 @@ export default async function handler(req: any, res: any) {
             if (ord) deferEmail(sendConfirmationEmails(ord));
           } catch (confirmError) {
             console.error("Square payment captured but fulfillment needs review:", confirmError);
+            // The card IS captured. Stamp the order so the 24h expiry sweep can't
+            // cancel it and email the customer "No payment was collected for this
+            // order." while Square holds their money.
+            await supabaseAdmin
+              .from("orders")
+              .update({ payment_captured_at: new Date().toISOString() })
+              .eq("id", orderId);
             if (ord) {
               await recordLatePayment(
                 ord,
@@ -716,10 +722,32 @@ export default async function handler(req: any, res: any) {
         res.status(402).json({ error: result.error });
         return;
       } catch (err) {
+        // chargeSquare only throws when the request to Square itself fails
+        // (DNS/TLS/socket reset/timeout) — the response parse is guarded. So a
+        // capture that succeeded but whose response was lost in transit is
+        // INDISTINGUISHABLE here from a payment that never happened.
+        //
+        // Resolving that ambiguity as "declined" is the unsafe direction: it
+        // marked the order failed and told the customer to try again, and each
+        // retry mints a fresh order id — which is the Square idempotency key — so
+        // the second attempt captures a second time. Money taken twice, one order,
+        // no alert. Leave the order pending, stamp it so auto-expiry can't cancel
+        // it, alert ops, and give the customer a neutral "we're confirming your
+        // payment" state instead of an invitation to double-pay.
         console.error("Square charge error:", err);
-        await supabaseAdmin.from("orders").update({ status: "failed" }).eq("id", orderId);
-        await releaseDiscountRedemption(orderId);
-        res.status(500).json({ error: "Card payment failed. Please try again." });
+        const detail = err instanceof Error ? err.message : "unknown error";
+        await supabaseAdmin
+          .from("orders")
+          .update({
+            payment_captured_at: new Date().toISOString(),
+            admin_notes: `Square charge request failed in transit (${detail}). The capture may or may not have gone through — check Square for a payment with reference_id ${orderId} before refunding or re-charging, then Mark Paid or Cancel.`,
+          })
+          .eq("id", orderId);
+        await notifyAdmin(
+          `Square charge unresolved — order ${orderId}`,
+          `The request to Square failed in transit (${detail}) for order ${orderId} ($${amountDue.toFixed(2)}).\n\nThe payment may still have been captured. Look up reference_id ${orderId} in the Square dashboard, then either Mark Paid or Cancel the order in Admin → Orders. It is held out of auto-expiry until you do.`
+        ).catch(() => {});
+        res.status(202).json({ paid: true, pendingReview: true, orderId });
         return;
       }
     }
@@ -734,7 +762,12 @@ export default async function handler(req: any, res: any) {
       // The order auto-expires 4 days after creation (mirrors expire_stale_orders);
       // the client shows a live countdown from this.
       const expiresAt = new Date(Date.now() + 4 * 24 * 3600 * 1000).toISOString();
-      res.status(200).json({ awaiting: true, method: payMethod, orderId, expiresAt });
+      // Return the server-computed amount. The modal instructs the customer to
+      // "Send exactly $X" and there is no processor to reconcile a mismatch — if
+      // the client's total disagreed (stale catalog, a discount the server
+      // rejected, credit applied server-side) the customer would send the wrong
+      // sum and the admin would have to chase the difference by hand.
+      res.status(200).json({ awaiting: true, method: payMethod, orderId, expiresAt, amountDue });
       return;
     }
 
