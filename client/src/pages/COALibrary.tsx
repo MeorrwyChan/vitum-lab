@@ -22,6 +22,7 @@ const coas = [
     matrix: "Powder",
     pdf: "/coa/Retatrutide_COA.pdf",
     slug: "glp3r",
+    productSlug: "retatrutide",
     color: "bg-[#f5e8e0]",
     dot: "bg-red-400",
   },
@@ -39,6 +40,7 @@ const coas = [
     matrix: "Powder",
     pdf: "/coa/GHKCU_COA.pdf",
     slug: "ghkcu",
+    productSlug: "ghkcu",
     color: "bg-[#e0f0ec]",
     dot: "bg-emerald-400",
   },
@@ -56,8 +58,99 @@ const coas = [
     matrix: "Powder",
     pdf: "/coa/NAD_COA.pdf",
     slug: "nad",
+    productSlug: "nad",
     color: "bg-[#faeae0]",
     dot: "bg-orange-400",
+  },
+  {
+    product: "BPC-157",
+    fullName: "BPC-157 (Body Protection Compound-157, Pentadecapeptide)",
+    category: "Tissue / Peptide Research",
+    batch: "E014",
+    reportNo: "2026-000042",
+    purity: "99.5%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
+    lab: "Constitution Laboratories LLC",
+    test: "HPLC Purity",
+    matrix: "Lyophilized Powder",
+    pdf: "/coa/BPC157_COA.pdf",
+    slug: "bpc157",
+    productSlug: "bpc157",
+    color: "bg-[#e6ecf7]",
+    dot: "bg-blue-400",
+  },
+  {
+    product: "CJC-1295 + Ipamorelin",
+    fullName: "CJC-1295 (No DAC / Mod GRF 1-29) + Ipamorelin Blend",
+    category: "Metabolic / Endocrine Research",
+    batch: "H007",
+    reportNo: "2026-000042",
+    purity: "99.4%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
+    lab: "Constitution Laboratories LLC",
+    test: "HPLC Purity",
+    matrix: "Lyophilized Powder",
+    pdf: "/coa/CJCIPA_COA.pdf",
+    slug: "cjc1295-ipamorelin",
+    productSlug: "cjc1295-ipamorelin",
+    color: "bg-[#e8ecdd]",
+    dot: "bg-lime-500",
+  },
+  {
+    product: "TB-500",
+    fullName: "TB-500 (Thymosin Beta-4 Fragment)",
+    category: "Tissue / Peptide Research",
+    batch: "F008",
+    reportNo: "2026-000042",
+    purity: "99.2%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
+    lab: "Constitution Laboratories LLC",
+    test: "HPLC Purity",
+    matrix: "Lyophilized Powder",
+    pdf: "/coa/TB500_COA.pdf",
+    slug: "tb500",
+    productSlug: "tb500",
+    color: "bg-[#f5ecd6]",
+    dot: "bg-amber-400",
+  },
+  {
+    product: "MOTS-C",
+    fullName: "MOTS-c (Mitochondrial-Derived Peptide)",
+    category: "Cellular / Metabolic Research",
+    batch: "J019",
+    reportNo: "2026-000042",
+    purity: "99.0%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
+    lab: "Constitution Laboratories LLC",
+    test: "HPLC Purity",
+    matrix: "Lyophilized Powder",
+    pdf: "/coa/MOTSC_COA.pdf",
+    slug: "motsc",
+    productSlug: "motsc",
+    color: "bg-[#e9e9ec]",
+    dot: "bg-slate-400",
+  },
+  {
+    product: "Tesamorelin",
+    fullName: "Tesamorelin (GHRH(1-44) Analog, TH9507)",
+    category: "Metabolic / Endocrine Research",
+    batch: "G022",
+    reportNo: "2026-000042",
+    purity: "99.6%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
+    lab: "Constitution Laboratories LLC",
+    test: "HPLC Purity",
+    matrix: "Lyophilized Powder",
+    pdf: "/coa/TESAMORELIN_COA.pdf",
+    slug: "tesamorelin",
+    productSlug: "tesamorelin",
+    color: "bg-[#f6e3ef]",
+    dot: "bg-pink-400",
   },
 ];
 
@@ -95,7 +188,7 @@ export default function COALibrary() {
             <div
               key={c.slug}
               id={c.slug}
-              className="border border-[oklch(0.91_0.004_260)] rounded-2xl overflow-hidden flex flex-col hover:shadow-md transition-shadow duration-200"
+              className="scroll-mt-28 border border-[oklch(0.91_0.004_260)] rounded-2xl overflow-hidden flex flex-col hover:shadow-md transition-shadow duration-200"
             >
               {/* Colored top strip */}
               <div className={`${c.color} px-6 py-5 flex items-center gap-3`}>
@@ -144,7 +237,7 @@ export default function COALibrary() {
                     <FileText className="w-4 h-4" /> Download COA (PDF)
                   </a>
                   <Link
-                    href={`/shop/${c.slug === "glp3r" ? "retatrutide" : c.slug}`}
+                    href={`/shop/${c.productSlug}`}
                     className="flex items-center justify-center gap-1.5 text-[0.8125rem] font-semibold text-[oklch(0.52_0.01_260)] hover:text-[oklch(0.13_0.01_260)] dark:hover:text-white transition-colors"
                   >
                     <ExternalLink className="w-3.5 h-3.5" /> View Product
