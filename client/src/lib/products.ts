@@ -219,11 +219,16 @@ export const products: Product[] = [
   },
 ];
 
-// Maps a variant cartCode to its card anchor on /coa-library (card ids: glp3r, ghkcu, nad).
+// Maps a variant cartCode to its card anchor on /coa-library.
 // BAC Water has no COA card, so its link lands on the library overview.
 export function coaLibraryHref(cartCode: string): string {
   if (cartCode.startsWith("retatrutide")) return "/coa-library#glp3r";
   if (cartCode.startsWith("ghk-cu")) return "/coa-library#ghkcu";
   if (cartCode.startsWith("nad")) return "/coa-library#nad";
+  if (cartCode.startsWith("bpc-157")) return "/coa-library#bpc157";
+  if (cartCode.startsWith("cjc-ipamorelin")) return "/coa-library#cjc1295-ipamorelin";
+  if (cartCode.startsWith("tb-500")) return "/coa-library#tb500";
+  if (cartCode.startsWith("mots-c")) return "/coa-library#motsc";
+  if (cartCode.startsWith("tesamorelin")) return "/coa-library#tesamorelin";
   return "/coa-library";
 }
