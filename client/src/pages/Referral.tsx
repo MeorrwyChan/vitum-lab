@@ -14,6 +14,7 @@ import { Check, Copy, ArrowRight, Zap, Share2, DollarSign, Loader2, Mail, Shield
 import SEO from "@/components/SEO";
 import { useAuth } from "@/contexts/AuthContext";
 import { authedFetch } from "@/lib/api";
+import { fetchSiteConfig } from "@/hooks/useSiteConfig";
 
 const CLAIM_EMAIL = "orders@vitumlab.com";
 
@@ -42,9 +43,8 @@ export default function Referral() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch("/api/public/site")
-      .then((r) => r.json())
-      .then((d) => setCfg(d.referral_program ?? { active: false, buyer_discount: 10, bounty_amount: 100, bounty_orders: 5, min_order: 0 }))
+    fetchSiteConfig()
+      .then((d) => setCfg((d.referral_program as ReferralConfig | undefined) ?? { active: false, buyer_discount: 10, bounty_amount: 100, bounty_orders: 5, min_order: 0 }))
       .catch(() => setCfg({ active: false, buyer_discount: 10, bounty_amount: 100, bounty_orders: 5, min_order: 0 }));
   }, []);
 

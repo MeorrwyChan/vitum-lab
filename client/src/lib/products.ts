@@ -71,7 +71,7 @@ export const products: Product[] = [
     ],
     specs: [
       { label: "Molecular Formula", value: "C₂₂₂H₃₄₈N₄₈O₆₅" },
-      { label: "Molecular Weight", value: "4867.5 g/mol" },
+      { label: "Molecular Weight", value: "4729.5 g/mol" },
       { label: "Purity", value: "≥99% (HPLC)" },
       { label: "Form", value: "Lyophilized powder" },
       { label: "Solubility", value: "Soluble in BAC Water" },
@@ -120,7 +120,7 @@ export const products: Product[] = [
     ],
     specs: [
       { label: "Molecular Formula", value: "C₁₄H₂₄CuN₆O₄" },
-      { label: "Molecular Weight", value: "340.84 g/mol" },
+      { label: "Molecular Weight", value: "403.9 g/mol" },
       { label: "Purity", value: "≥99% (HPLC)" },
       { label: "Form", value: "Lyophilized powder" },
       { label: "Solubility", value: "Soluble in water / BAC Water" },

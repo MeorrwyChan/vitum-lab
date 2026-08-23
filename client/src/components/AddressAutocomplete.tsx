@@ -120,6 +120,10 @@ export default function AddressAutocomplete({ value, onChange, onSelect, placeho
       });
   };
 
+  // A pending debounce outlives the component otherwise — issuing a billable
+  // Autocomplete request and setting state on an unmounted node.
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
   const handleInput = (input: string) => {
     onChange(input);
     if (debounceRef.current) clearTimeout(debounceRef.current);

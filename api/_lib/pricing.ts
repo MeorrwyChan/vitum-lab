@@ -78,7 +78,12 @@ export function cashPaidBasis(net: unknown, shipping: unknown, credit: unknown):
  */
 export function sitewideSalePrice(base: number, percentOff: number): number {
   const pct = Math.max(0, Math.min(100, Number(percentOff) || 0));
-  return Math.ceil((Number(base) || 0) * (1 - pct / 100));
+  const b = Number(base) || 0;
+  // Clamp to the base price. Rounding up a small discount off a cent-priced
+  // base (e.g. 1% off 69.99 -> 70) would otherwise RAISE the price during a
+  // sale, and desync the client — which only treats sale_price as a sale when
+  // it is strictly below base — into a permanent "prices changed" checkout 409.
+  return Math.min(b, Math.ceil(b * (1 - pct / 100)));
 }
 
 /**

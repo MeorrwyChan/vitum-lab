@@ -17,7 +17,7 @@ const values = [
   {
     icon: <ShieldCheck className="w-6 h-6" />,
     title: "Independent Verification",
-    body: "We do not rely solely on manufacturer-supplied data. Every batch is independently tested by accredited US third-party laboratories for identity, purity, and potency before it reaches our catalog.",
+    body: "Every batch is tested by an accredited third-party laboratory for purity, and for identity where the certificate reports it, before it reaches our catalog. The issuing lab is named on each Certificate of Analysis.",
   },
   {
     icon: <Award className="w-6 h-6" />,

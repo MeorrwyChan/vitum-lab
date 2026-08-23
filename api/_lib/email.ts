@@ -617,7 +617,7 @@ export async function sendLowStockDigest(rows: { cartCode: string; stock: number
     .join("");
   await send(
     inventoryInbox(),
-    `Low stock — ${rows.length} item${rows.length === 1 ? "" : "s"} need attention`,
+    `Low stock — ${rows.length} item${rows.length === 1 ? " needs" : "s need"} attention`,
     layout(
       pill("Inventory", "#fdf6e7", "#9a6b15") +
       heading("Low / out-of-stock items", "These products are at or below the low-stock threshold (5 units). Restock to keep them sellable.") +

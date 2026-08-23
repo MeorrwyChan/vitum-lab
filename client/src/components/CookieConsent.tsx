@@ -10,7 +10,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Cookie, X } from "lucide-react";
 
-const STORAGE_KEY = "vitum_cookie_consent";
+import { CONSENT_KEY as STORAGE_KEY } from "@/lib/consent";
 
 export default function CookieConsent() {
   const [visible, setVisible] = useState(false);

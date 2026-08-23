@@ -211,7 +211,7 @@ export default async function handler(req: any, res: any) {
           .toUpperCase()
           .replace(/[^A-Z0-9]/g, "")
           .slice(0, 12) || "REF";
-      // Reserve across BOTH code namespaces. The affiliates UNIQUE constraint
+      // Reserve across ALL THREE code namespaces. The affiliates UNIQUE constraint
       // only protects against affiliate-vs-affiliate collisions, but checkout
       // resolves affiliate codes BEFORE promo_codes — so a self-minted referral
       // code that happens to equal a store promo code would shadow it (customers
@@ -219,8 +219,14 @@ export default async function handler(req: any, res: any) {
       // and the order is attributed to the referrer). The seed is user-controlled
       // (user_metadata.full_name is self-writable via auth.updateUser), so this
       // has to be an explicit check rather than an accident of naming.
-      const [{ data: takenAff }, { data: takenPromo }] = await Promise.all([supabaseAdmin.from("affiliates").select("code").ilike("code", `${base}%`), supabaseAdmin.from("promo_codes").select("code").ilike("code", `${base}%`)]);
-      const takenSet = new Set([...(takenAff ?? []), ...(takenPromo ?? [])].map((r: any) => String(r.code).toUpperCase()));
+      // referral_codes is the third: checkout falls through to it last, so a
+      // mint that shadows a legacy customer referral code steals its attribution.
+      const [{ data: takenAff }, { data: takenPromo }, { data: takenRef }] = await Promise.all([
+        supabaseAdmin.from("affiliates").select("code").ilike("code", `${base}%`),
+        supabaseAdmin.from("promo_codes").select("code").ilike("code", `${base}%`),
+        supabaseAdmin.from("referral_codes").select("code").ilike("code", `${base}%`),
+      ]);
+      const takenSet = new Set([...(takenAff ?? []), ...(takenPromo ?? []), ...(takenRef ?? [])].map((r: any) => String(r.code).toUpperCase()));
 
       // Candidate stream: BASE, BASE2, BASE3, … then BASE+4 random chars as a
       // collision-proof fallback so we always terminate.

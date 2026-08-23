@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { CheckCircle2, ArrowRight, Copy, Check, Clock } from "lucide-react";
 import SEO from "@/components/SEO";
 import { authedFetch } from "@/lib/api";
+import { fetchSiteConfig } from "@/hooks/useSiteConfig";
 
 interface ManualCfg { enabled: boolean; handle: string; instructions: string }
 
@@ -39,9 +40,8 @@ export default function OrderSuccess() {
     if (Number.isFinite(expMs)) setExpiresAt(expMs);
     // For a manual transfer, pull the send-to handle from the public config.
     if (isAwaiting && m) {
-      fetch("/api/public/site")
-        .then((r) => r.json())
-        .then((d) => { const p = d.payments?.[m]; if (p?.handle) setHandle(p as ManualCfg); })
+      fetchSiteConfig()
+        .then((d) => { const p = (d.payments as Record<string, ManualCfg> | undefined)?.[m]; if (p?.handle) setHandle(p); })
         .catch(() => {});
     }
   }, []);

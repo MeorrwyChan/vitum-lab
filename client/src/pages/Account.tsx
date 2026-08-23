@@ -17,6 +17,7 @@ import { useInventory } from "@/hooks/useInventory";
 import { authedFetch } from "@/lib/api";
 import OrderTimeline from "@/components/OrderTimeline";
 import SEO from "@/components/SEO";
+import { fetchSiteConfig } from "@/hooks/useSiteConfig";
 
 interface OrderItem { name: string; dose: string; quantity: number; cartCode: string; price: number }
 interface Order {
@@ -72,7 +73,7 @@ export default function Account() {
   const { addItem, closeCart } = useCart();
 
   useEffect(() => {
-    fetch("/api/public/site").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d?.payments) setPayments(d.payments); }).catch(() => {});
+    fetchSiteConfig().then((d) => { if (d?.payments) setPayments(d.payments as Record<string, { handle?: string; instructions?: string }>); }).catch(() => {});
   }, []);
 
   // Tick a countdown for pending manual orders (expire 4 days after placement).
@@ -295,7 +296,7 @@ export default function Account() {
 
                 <div className="flex items-center justify-between border-t border-[oklch(0.95_0.003_260)] pt-3">
                   <span className="text-[0.8125rem] text-[oklch(0.52_0.01_260)]">
-                    Total <span className="text-[0.9375rem] font-bold text-[oklch(0.13_0.01_260)] ml-1">${(Number(o.net_amount) + Number(o.shipping_amount ?? 0)).toFixed(2)}</span>
+                    Total <span className="text-[0.9375rem] font-bold text-[oklch(0.13_0.01_260)] ml-1">${(Number(o.net_amount) + Number(o.shipping_amount ?? 0) - Number(o.credit_applied ?? 0)).toFixed(2)}</span>
                   </span>
                   <button
                     onClick={() => reorder(o)}

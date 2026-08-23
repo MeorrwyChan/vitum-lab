@@ -11,8 +11,8 @@ const FOLLOWUP_AFTER_DAYS = 7;
 // Affiliate monthly statements go out on the 1st of the month at 15:00 UTC.
 const AFFILIATE_STATEMENT_HOUR_UTC = 15;
 
-const ORDER_COLS = "id, email, items, gross_amount, discount_amount, discount_code, net_amount, shipping_amount, shipping_address, status, cancel_reason, emails_sent";
-const ORDER_COLS_FULL = "id, email, items, gross_amount, discount_amount, discount_code, net_amount, shipping_amount, shipping_address, status, fulfillment_status, tracking_number, carrier, delivered_at, emails_sent";
+const ORDER_COLS = "id, email, items, gross_amount, discount_amount, discount_code, net_amount, shipping_amount, credit_applied, shipping_address, status, cancel_reason, emails_sent";
+const ORDER_COLS_FULL = "id, email, items, gross_amount, discount_amount, discount_code, net_amount, shipping_amount, credit_applied, shipping_address, status, fulfillment_status, tracking_number, carrier, delivered_at, emails_sent";
 
 // Affiliate monthly statements for the previous calendar month.
 async function sendAffiliateStatements(results: { statements: number; errors: number }) {
@@ -112,14 +112,14 @@ export default async function handler(req: any, res: any) {
 
   try {
     // 1. Expire stale pending orders (mirrors the expire_stale_orders pg_cron
-    // fn). Automated invoices (crypto/square/legacy-null) die at 24h; manual
-    // transfers the admin verifies (Zelle/Cash App/Venmo/ACH) get 4 days.
+    // fn). Automated invoices (crypto/legacy-null) die at 24h; manual transfers
+    // the admin verifies (Zelle/Cash App/Venmo/ACH) get 4 days.
     const MANUAL_METHODS = ["zelle", "cashapp", "venmo", "ach"];
     const nowIso = new Date().toISOString();
     const cutoff24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const cutoffManual = new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString();
     const expired: any[] = [];
-    // Automated: crypto/square, or legacy rows with no payment_method.
+    // Automated: crypto, or legacy rows with no payment_method.
     const { data: autoExpired } = await supabaseAdmin
       .from("orders")
       .update({
@@ -128,12 +128,12 @@ export default async function handler(req: any, res: any) {
         cancel_reason: "auto-expired: payment not received in time",
       })
       .eq("status", "pending")
-      // Mirrors expire_stale_orders(): a stamped row may have money sitting at
-      // the processor (Square captured, confirmation failed / response lost), so
-      // it must be reconciled by a human, never auto-cancelled.
+      // Mirrors expire_stale_orders(): a stamped row has money that actually
+      // arrived but could not be auto-fulfilled, so it must be reconciled by a
+      // human, never auto-cancelled with a "no payment collected" email.
       .is("payment_captured_at", null)
       .lt("created_at", cutoff24)
-      .or("payment_method.is.null,payment_method.eq.crypto,payment_method.eq.square")
+      .or("payment_method.is.null,payment_method.eq.crypto")
       .select(ORDER_COLS);
     expired.push(...(autoExpired ?? []));
     // Manual transfers — longer grace window.
@@ -217,12 +217,12 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 4. Auto-detect USPS delivery via Shippo for shipped orders w/ tracking.
+    // 4. Auto-detect delivery via Shippo for shipped orders w/ tracking.
     if (shippoConfigured()) {
       const { data: inTransit } = await supabaseAdmin.from("orders").select(ORDER_COLS_FULL).eq("fulfillment_status", "shipped").not("tracking_number", "is", null).limit(60);
       for (const o of inTransit ?? []) {
         try {
-          const status = await getTrackingStatus(o.tracking_number as string);
+          const status = await getTrackingStatus(o.tracking_number as string, o.carrier as string | null);
           if (status === "DELIVERED") {
             // Email BEFORE flipping fulfillment_status. The other order is a
             // one-shot: this query only matches `shipped` rows, so once the row
@@ -262,7 +262,16 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 6. Affiliate monthly statements — 1st of the month at 15:00 UTC.
+    // 6. Sweep expired rate-limit rows. rate_limit_hit() only prunes the single
+    // bucket being checked, so every bucket that is never hit again keeps its
+    // rows forever — and the keys are per-IP and per-email, so the cardinality
+    // is attacker-controlled. The widest window in use is well under a day.
+    await supabaseAdmin
+      .from("rate_limits")
+      .delete()
+      .lt("created_at", new Date(Date.now() - 86400 * 1000).toISOString());
+
+    // 7. Affiliate monthly statements — 1st of the month at 15:00 UTC.
     const nowDate = new Date();
     if (nowDate.getUTCDate() === 1 && nowDate.getUTCHours() === AFFILIATE_STATEMENT_HOUR_UTC) {
       await sendAffiliateStatements(results);

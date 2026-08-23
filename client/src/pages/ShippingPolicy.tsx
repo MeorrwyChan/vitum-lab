@@ -36,7 +36,7 @@ export default function ShippingPolicy() {
 
       <h2>Product Stability During Transit</h2>
       <p>
-        All Vitum Lab peptides are lyophilized (freeze-dried) and are stable at ambient temperature for the duration of standard domestic transit. Cold-chain shipping is not required for delivery. Upon receipt, products should be stored at <strong>2–8°C (36–46°F)</strong> in a sealed, dry environment away from direct light until use.
+        All Vitum Lab peptides are lyophilized (freeze-dried) and are stable at ambient temperature for the duration of standard domestic transit. Cold-chain shipping is not required for delivery. Upon receipt, unopened vials should be stored at <strong>−20°C (−4°F)</strong> in a sealed, dry environment away from direct light. Once reconstituted, store at <strong>2–8°C (36–46°F)</strong> and use within 28 days.
       </p>
 
       <h2>Domestic Shipping Only</h2>
@@ -60,7 +60,7 @@ export default function ShippingPolicy() {
       <h2>Lost or Damaged Shipments</h2>
       <p>
         If your order arrives damaged or does not arrive within the expected timeframe, please contact us at{" "}
-        <a href="mailto:hello@vitumlab.com">hello@vitumlab.com</a> within <strong>7 days of the expected delivery date</strong>. Include your order number and, where applicable, photos of the damaged packaging. We will work with you to resolve the issue promptly.
+        <a href="mailto:hello@vitumlab.com">hello@vitumlab.com</a>. For a package that arrives damaged, contact us within <strong>48 hours of delivery</strong> with photos of the packaging and product. For a package that does not arrive, contact us within <strong>14 days of the expected delivery date</strong> so we can open a trace. Both windows and the remedies are set out in our Return Policy.
       </p>
 
       <h2>Contact</h2>

@@ -3,9 +3,9 @@
  * Design: Clean card with input fields + animated syringe SVG visual.
  * The syringe fill level and unit markers update in real-time.
  *
- * Customer-only tool — gated behind sign-in by the pages that render it
- * (see DoseCalculator.tsx and ProductDetail.tsx); not shown to anonymous
- * visitors.
+ * Public — no sign-in. Both host pages (DoseCalculator.tsx and
+ * ProductDetail.tsx) render it to anonymous visitors; the standalone
+ * calculator is a deliberate organic-search entry point.
  */
 
 import { useState, useMemo } from "react";

@@ -90,6 +90,10 @@ export async function recordLatePayment(order: any, meta: PaymentMeta, note: str
       pay_currency: meta.payCurrency ?? null,
       pay_amount: meta.payAmount ?? null,
       payment_id: meta.paymentId != null ? String(meta.paymentId) : null,
+      // The money DID arrive — it just could not be auto-fulfilled. Stamp the
+      // order so the expiry sweep can't cancel it and email the customer "No
+      // payment was collected for this order."
+      payment_captured_at: order.payment_captured_at ?? new Date().toISOString(),
     })
     .eq("id", order.id);
   await sendOrderEvent(order as EmailOrder, "admin_late_payment");

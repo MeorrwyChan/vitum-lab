@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowRight, Tag, Check, Loader2, ShoppingBag, CreditCard, Bitcoin, Landmark, DollarSign, AtSign, Building2, Zap, ShieldCheck, CircleSlash, Lock, Truck, PartyPopper } from "lucide-react";
+import { ArrowRight, Tag, Check, Loader2, ShoppingBag, Bitcoin, Landmark, DollarSign, AtSign, Building2, Zap, ShieldCheck, CircleSlash, Truck, PartyPopper } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { authedFetch } from "@/lib/api";
@@ -16,8 +16,8 @@ import { getPromoCode, clearPromoCode } from "@/lib/promo";
 import { quantityDiscountPercent, round2, shippingFee, SHIPPING_PROTECTION_FEE, FREE_SHIPPING_THRESHOLD, FREE_GIFT_THRESHOLD, type QuantityTier } from "@/lib/discounts";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import SEO from "@/components/SEO";
-import SquareCardBox from "@/components/SquareCardBox";
 import ManualPaymentModal, { type ManualModalData } from "@/components/ManualPaymentModal";
+import { fetchSiteConfig } from "@/hooks/useSiteConfig";
 
 interface Sitewide { active: boolean; percent?: number; label?: string | null; ends_at?: string | null }
 
@@ -28,25 +28,22 @@ function saleRemaining(ms: number): string {
   return d > 0 ? `${d}d ${pad(h)}h ${pad(m)}m ${pad(sec)}s` : `${pad(h)}h ${pad(m)}m ${pad(sec)}s`;
 }
 
-type PayMethod = "square" | "zelle" | "cashapp" | "venmo" | "ach" | "crypto";
+type PayMethod = "zelle" | "cashapp" | "venmo" | "ach" | "crypto";
 const MANUAL_METHODS: PayMethod[] = ["zelle", "cashapp", "venmo", "ach"];
 
 interface ManualCfg { enabled: boolean; handle: string; instructions: string }
 interface PaymentsCfg {
-  square: { enabled: boolean };
   zelle: ManualCfg; cashapp: ManualCfg; venmo: ManualCfg; ach: ManualCfg;
   crypto: { enabled: boolean };
 }
 
-// Display metadata per method (order = tile order). "memo" = where the customer
-// writes their order number so we can match the transfer.
-const METHOD_META: Record<PayMethod, { label: string; Icon: typeof CreditCard; memo: string }> = {
-  square:  { label: "Card",        Icon: CreditCard, memo: "" },
-  zelle:   { label: "Zelle",       Icon: Landmark,   memo: "memo / note" },
-  cashapp: { label: "Cash App",    Icon: DollarSign, memo: "note" },
-  venmo:   { label: "Venmo",       Icon: AtSign,     memo: "note" },
-  ach:     { label: "Bank (ACH)",  Icon: Building2,  memo: "transfer memo" },
-  crypto:  { label: "Crypto",      Icon: Bitcoin,    memo: "" },
+// Display metadata per method (order = tile order).
+const METHOD_META: Record<PayMethod, { label: string; Icon: typeof Landmark }> = {
+  zelle:   { label: "Zelle",       Icon: Landmark   },
+  cashapp: { label: "Cash App",    Icon: DollarSign },
+  venmo:   { label: "Venmo",       Icon: AtSign     },
+  ach:     { label: "Bank (ACH)",  Icon: Building2  },
+  crypto:  { label: "Crypto",      Icon: Bitcoin    },
 };
 
 // Per-method brand colour for the payment tiles. `icon` colours the glyph in
@@ -54,12 +51,6 @@ const METHOD_META: Record<PayMethod, { label: string; Icon: typeof CreditCard; m
 // treatment; `hover` tints an unselected tile on hover. Full class strings (incl.
 // dark: variants) so Tailwind's scanner emits them.
 const METHOD_STYLE: Record<PayMethod, { icon: string; sel: string; hover: string }> = {
-  // Card → indigo/violet
-  square: {
-    icon: "text-[oklch(0.48_0.18_285)] dark:text-[oklch(0.80_0.14_285)]",
-    sel: "border-[oklch(0.50_0.18_285)] bg-[oklch(0.96_0.03_285)] text-[oklch(0.36_0.17_285)] dark:bg-[oklch(0.30_0.10_285)] dark:text-[oklch(0.90_0.07_285)] dark:border-[oklch(0.55_0.15_285)]",
-    hover: "hover:border-[oklch(0.70_0.10_285)] hover:bg-[oklch(0.985_0.01_285)] dark:hover:bg-[oklch(0.24_0.04_285)]",
-  },
   // Zelle → purple
   zelle: {
     icon: "text-[oklch(0.48_0.20_300)] dark:text-[oklch(0.80_0.15_300)]",
@@ -92,38 +83,8 @@ const METHOD_STYLE: Record<PayMethod, { icon: string; sel: string; hover: string
   },
 };
 
-// Trust row of accepted card brands — inline SVG/markup only (CSP-safe, no
-// external images). White badges force an explicit white bg so the `.dark
-// .bg-white` override doesn't darken them. Shown when Card (Square) is selected.
-function CardBrands() {
-  const chip = "inline-flex items-center justify-center h-6 rounded-[5px] bg-[oklch(1_0_0)] border border-[oklch(0.90_0.004_260)]";
-  return (
-    <div className="flex flex-col items-center gap-2 pt-1">
-      <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold text-[oklch(0.50_0.01_260)] dark:text-[oklch(0.70_0.01_260)]">
-        <Lock className="w-3 h-3" /> 256-bit SSL encrypted checkout
-      </div>
-      <div className="flex items-center gap-1.5 flex-wrap justify-center">
-        <span className={`${chip} px-1.5`}><span className="text-[0.6875rem] font-extrabold italic tracking-tight text-[#1a1f71]">VISA</span></span>
-        <span className={`${chip} w-10`}>
-          <svg width="28" height="17" viewBox="0 0 28 17" aria-label="Mastercard" role="img">
-            <circle cx="11" cy="8.5" r="6.5" fill="#EB001B" />
-            <circle cx="17" cy="8.5" r="6.5" fill="#F79E1B" fillOpacity="0.85" />
-          </svg>
-        </span>
-        <span className="inline-flex items-center justify-center h-6 px-1.5 rounded-[5px] bg-[#1F72CD]"><span className="text-[0.625rem] font-extrabold text-white tracking-tight">AMEX</span></span>
-        <span className="inline-flex items-center justify-center gap-[3px] h-6 px-1.5 rounded-[5px] bg-black">
-          <svg width="11" height="13" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.51 4.09l-.02-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>
-          <span className="text-[0.625rem] font-semibold text-white">Pay</span>
-        </span>
-        <span className={`${chip} px-1.5`}><span className="text-[0.6875rem] font-bold tracking-tight"><span className="text-[#4285F4]">G</span><span className="text-[#EA4335]"> </span><span className="text-[oklch(0.40_0.01_260)]">Pay</span></span></span>
-      </div>
-    </div>
-  );
-}
-
 function isMethodEnabled(p: PaymentsCfg | null, m: PayMethod): boolean {
   if (!p) return false;
-  if (m === "square") return !!p.square?.enabled;
   if (m === "crypto") return p.crypto?.enabled !== false;
   return !!p[m]?.enabled && !!p[m]?.handle;
 }
@@ -151,17 +112,10 @@ export default function Checkout() {
   const [shippingProtection, setShippingProtection] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Enabled payment methods (Square + manual handles + crypto), from the admin
-  // config via /api/public/site. `payMethod` is the selected tile.
+  // Enabled payment methods (manual handles + crypto), from the admin config
+  // via /api/public/site. `payMethod` is the selected tile.
   const [payments, setPayments] = useState<PaymentsCfg | null>(null);
   const [payMethod, setPayMethod] = useState<PayMethod>("crypto");
-  // Server config can offer Square while the client can't tokenize (missing
-  // VITE_ vars, SDK blocked). Detect the config gap synchronously and SDK
-  // failures via SquareCardBox.onUnavailable — then drop the Card tile instead
-  // of showing a dead form.
-  const [squareUnavailable, setSquareUnavailable] = useState(
-    () => !import.meta.env.VITE_SQUARE_APPLICATION_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID,
-  );
   const [sale, setSale] = useState<Sitewide | null>(null);
   const [now, setNow] = useState(() => Date.now());
   // Post-order "send your payment" modal for the manual methods.
@@ -177,8 +131,9 @@ export default function Checkout() {
     let stale = false;
     setSiteLoadFailed(false);
     const attempt = (retriesLeft: number) => {
-      fetch("/api/public/site")
-        .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      // Shared cached fetch; failures aren't cached, so the retry below still
+      // gets a live attempt.
+      fetchSiteConfig()
         .then((d) => {
           if (stale) return;
           setTiers(d.quantity_tiers ?? []);
@@ -186,10 +141,9 @@ export default function Checkout() {
           const p = d.payments as PaymentsCfg | undefined;
           if (p) {
             setPayments(p);
-            // Default to the first enabled method (Square first, crypto last) —
-            // skipping Square when the client can't tokenize.
-            const first = (["square", "zelle", "cashapp", "venmo", "ach", "crypto"] as PayMethod[])
-              .find((m) => isMethodEnabled(p, m) && !(m === "square" && squareUnavailable));
+            // Default to the first enabled method (crypto last).
+            const first = (["zelle", "cashapp", "venmo", "ach", "crypto"] as PayMethod[])
+              .find((m) => isMethodEnabled(p, m));
             if (first) setPayMethod(first);
           }
         })
@@ -331,7 +285,7 @@ export default function Checkout() {
   const creditApplied = round2(Math.min(creditBalance, netAfterDiscounts + shippingCost + protectionFee));
   const total = round2(netAfterDiscounts + shippingCost + protectionFee - creditApplied);
 
-  const handlePay = async (squareToken?: string) => {
+  const handlePay = async () => {
     // Re-entrancy guard: a tokenize callback resolving while another payment
     // attempt is in flight (e.g. the user switched method mid-tokenize) must
     // never fire a second order-creating POST.
@@ -368,7 +322,6 @@ export default function Checkout() {
           attestation: attested,
           shippingProtection,
           paymentMethod: total <= 0 ? "crypto" : payMethod,
-          squareToken,
         }),
       });
       const data = await response.json();
@@ -386,10 +339,6 @@ export default function Checkout() {
           // $0 order (e.g. 100% promo) — already confirmed server-side.
           clearCart();
           navigate(`/order-success?order=${encodeURIComponent(data.orderId)}&free=1`);
-        } else if (data.paid) {
-          // Card charged + confirmed server-side (Square).
-          clearCart();
-          navigate(`/order-success?order=${encodeURIComponent(data.orderId)}`);
         } else if (data.awaiting) {
           // Manual transfer (Zelle/Cash App/Venmo/ACH) — the order is placed as
           // pending; open the "send your payment" modal with the real order # as
@@ -425,20 +374,10 @@ export default function Checkout() {
   const inputClass = `${inputBase} w-full`;
   const labelClass = "block text-[0.8125rem] font-semibold text-[oklch(0.35_0.01_260)] mb-1.5";
 
-  // Enabled methods in tile order (Card drops out if the client can't tokenize).
-  const enabledMethods = (["square", "zelle", "cashapp", "venmo", "ach", "crypto"] as PayMethod[])
-    .filter((m) => isMethodEnabled(payments, m) && !(m === "square" && squareUnavailable));
+  // Enabled methods in tile order.
+  const enabledMethods = (["zelle", "cashapp", "venmo", "ach", "crypto"] as PayMethod[])
+    .filter((m) => isMethodEnabled(payments, m));
   const saleActive = !!sale?.active && (!saleEndsAt || saleEndsAt > now);
-
-  // If Square dies after being selected (SDK failed to load), fall over to the
-  // next available method rather than leaving a selected tile that no longer exists.
-  useEffect(() => {
-    if (squareUnavailable && payMethod === "square") {
-      const next = enabledMethods.find((m) => m !== "square");
-      if (next) setPayMethod(next);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [squareUnavailable, payMethod]);
 
   // The pay buttons are disabled until the research-use box is ticked — say why,
   // instead of showing a dead button (only the Card method had this hint before).
@@ -670,7 +609,7 @@ export default function Checkout() {
                   <span className="text-[0.8125rem] font-bold text-[oklch(0.42_0.11_195)] dark:text-[oklch(0.82_0.10_195)] whitespace-nowrap">+${SHIPPING_PROTECTION_FEE.toFixed(2)}</span>
                 </span>
                 <span className="block mt-1 text-[0.6875rem] text-[oklch(0.50_0.01_260)] leading-relaxed">
-                  If your package is lost or stolen, we'll send a free replacement — no questions asked.
+                  Covers theft after delivery, which our standard policy can't, and replaces a lost package straight away instead of waiting on a carrier trace.
                 </span>
               </span>
             </label>
@@ -747,18 +686,6 @@ export default function Checkout() {
                     );
                   })}
                 </div>
-
-                {/* Square — inline secure card fields + accepted-card trust row */}
-                {payMethod === "square" && (
-                  <div className="space-y-3">
-                    {attested ? (
-                      <SquareCardBox amountDue={total} disabled={busy || !attested} busy={busy} onPay={(t) => handlePay(t)} onError={setError} onUnavailable={() => setSquareUnavailable(true)} />
-                    ) : (
-                      <p className="text-[0.75rem] text-[oklch(0.52_0.01_260)] text-center py-2">Confirm the acknowledgment above to enter your card.</p>
-                    )}
-                    <CardBrands />
-                  </div>
-                )}
 
                 {/* Bank / ACH — trust badges + how-it-works, then place the order */}
                 {payMethod === "ach" && (

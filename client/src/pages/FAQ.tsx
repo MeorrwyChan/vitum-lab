@@ -31,7 +31,7 @@ const faqCategories = [
       },
       {
         q: "What lot numbers are currently in stock?",
-        a: "Current lot numbers are displayed on each product card and product detail page. The COA Library lists all available batch documentation by lot number.",
+        a: "Current lot numbers are displayed on each product card and product detail page, and every certificate in the COA Library shows the lot it was issued for. If you need the certificate for the exact lot you received, email us your order number and we'll send it."
       },
     ],
   },
@@ -44,7 +44,7 @@ const faqCategories = [
       },
       {
         q: "What payment methods do you accept?",
-        a: "At checkout you can pay by Venmo, Cash App, or cryptocurrency. For Venmo and Cash App, you'll see the account to send to along with your order number — include that order number in the payment note so we can match it, and we'll confirm by email once it arrives (usually within minutes). Cryptocurrency is confirmed automatically. Card and bank (ACH) options are coming soon.",
+        a: "At checkout you can pay by Zelle, Cash App, Venmo, bank transfer (ACH), or cryptocurrency. For the transfer methods you'll see the account to send to along with your order number — include that order number in the payment memo so we can match it, and we'll confirm by email once it arrives. Cryptocurrency is confirmed automatically. We do not currently accept cards."
       },
       {
         q: "Can I place a bulk or institutional order?",
@@ -77,7 +77,7 @@ const faqCategories = [
       },
       {
         q: "How is packaging handled for temperature-sensitive compounds?",
-        a: "All orders are packaged with appropriate insulation and ice packs where required. Lyophilized peptides are stable at ambient temperatures for short transit periods, but we recommend refrigerating or freezing upon receipt.",
+        a: "Orders ship in padded envelopes. Lyophilized peptides are stable at ambient temperatures for normal transit periods, so no cold chain is required — freeze the vials at \u221220\u00b0C on arrival."
       },
     ],
   },
@@ -107,7 +107,7 @@ const faqCategories = [
       },
       {
         q: "What information is included in a COA?",
-        a: "Each COA includes: compound identity confirmation (HPLC and/or mass spectrometry), purity percentage, lot number, test date, and the name of the accredited testing laboratory. Full spectral data is included where applicable.",
+        a: "Each COA includes the purity percentage and the method behind it (HPLC, with FTIR identity confirmation where the report covers it), the lot number, the test date, and the name of the testing laboratory."
       },
       {
         q: "Can I request a COA for a specific lot?",

@@ -1,13 +1,12 @@
 /*
  * AffiliateDashboard.tsx — Vitum Lab affiliate dashboard (/affiliate/dashboard)
- * Stats cards + 30-day orders chart (recharts) + attributed orders table.
+ * Stats cards + 30-day orders chart + attributed orders table.
  * Gated server-side by the affiliates table; non-affiliates see "not authorized".
  */
 
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { LogOut, Loader2, Share2, Copy, Check } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { authedFetch } from "@/lib/api";
 import { formatOrderId } from "@/lib/orders";
@@ -31,6 +30,49 @@ interface AffOrder {
   commission_amount: number | null;
   status: string;
   created_at: string;
+}
+
+/**
+ * 30-day orders bar chart. Plain divs + CSS, matching admin/shared.tsx's
+ * RevenueChart — a charting library costs ~390 KB for this one graph.
+ */
+function OrdersChart({ series }: { series: { date: string; count: number }[] }) {
+  const max = Math.max(1, ...series.map((d) => d.count));
+  const total = series.reduce((s, d) => s + d.count, 0);
+  const fmtDay = (iso: string) => {
+    const [, m, d] = iso.split("-");
+    return `${Number(m)}/${Number(d)}`;
+  };
+
+  if (total === 0) {
+    return (
+      <div className="h-40 flex items-center justify-center text-[0.8125rem] text-[oklch(0.55_0.01_260)]">
+        No attributed orders in this window yet.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-end gap-[2px] h-40">
+        {series.map((d) => (
+          <div key={d.date} className="group relative flex-1 h-full flex items-end">
+            <div
+              className="w-full rounded-t-[3px] bg-[oklch(0.62_0.13_260)] group-hover:bg-[oklch(0.45_0.16_260)] transition-colors"
+              style={{ height: `${Math.max(d.count > 0 ? 3 : 0.5, (d.count / max) * 100)}%` }}
+            />
+            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10 whitespace-nowrap rounded-lg bg-[oklch(0.13_0.01_260)] px-2 py-1 text-[0.6875rem] font-semibold text-white shadow-lg">
+              {fmtDay(d.date)} · {d.count} {d.count === 1 ? "order" : "orders"}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between mt-2 text-[0.6875rem] text-[oklch(0.60_0.01_260)]">
+        <span>{series[0] ? fmtDay(series[0].date) : ""}</span>
+        <span>Today</span>
+      </div>
+    </>
+  );
 }
 
 export default function AffiliateDashboard() {
@@ -144,17 +186,7 @@ export default function AffiliateDashboard() {
         {/* Chart */}
         <div className="bg-white rounded-2xl p-6 shadow-[0_1px_4px_oklch(0.13_0.01_260/0.07)] mb-8">
           <h2 className="text-[1.125rem] font-bold text-[oklch(0.13_0.01_260)] mb-4">Orders — Last 30 Days</h2>
-          <div style={{ width: "100%", height: 240 }}>
-            <ResponsiveContainer>
-              <LineChart data={stats?.series ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.93 0.004 260)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} interval={4} />
-                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} domain={[0, (dataMax: number) => Math.max(4, dataMax)]} />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="oklch(0.35 0.15 260)" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <OrdersChart series={stats?.series ?? []} />
         </div>
 
         {/* Orders table */}

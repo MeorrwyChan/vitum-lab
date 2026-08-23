@@ -69,7 +69,6 @@ async function mockApi(page: Page, capture: { body?: unknown }) {
       sitewide: { active: false },
       quantity_tiers: [],
       payments: {
-        square: { enabled: false },
         zelle: { enabled: false, handle: "", instructions: "" },
         cashapp: { enabled: false, handle: "", instructions: "" },
         venmo: { enabled: false, handle: "", instructions: "" },
@@ -144,7 +143,6 @@ test("manual method (Venmo) shows the payment-instructions modal, not the empty 
       sitewide: { active: false },
       quantity_tiers: [],
       payments: {
-        square: { enabled: false },
         zelle: { enabled: false, handle: "", instructions: "" },
         cashapp: { enabled: false, handle: "", instructions: "" },
         venmo: { enabled: true, handle: "@vitumlab-pay", instructions: "" },
@@ -193,7 +191,6 @@ test("mobile checkout fields and payment methods remain comfortably usable", asy
       sitewide: { active: false },
       quantity_tiers: [],
       payments: {
-        square: { enabled: false },
         zelle: { enabled: true, handle: "payments@example.com", instructions: "" },
         cashapp: { enabled: true, handle: "$vitumlab", instructions: "" },
         venmo: { enabled: true, handle: "@vitumlab", instructions: "" },

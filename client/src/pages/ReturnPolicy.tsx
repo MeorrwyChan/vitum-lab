@@ -15,6 +15,13 @@ export default function ReturnPolicy() {
           Please contact us within <strong>14 days of the expected delivery date</strong> with your
           order number so we can open a trace and arrange a replacement shipment.
         </p>
+        <p>
+          This free replacement covers packages lost <em>in transit</em>, and requires a carrier
+          trace to confirm the loss. The optional <strong>Shipping Protection</strong> add-on at
+          checkout is what covers <strong>theft after a package is marked delivered</strong> — which
+          a carrier trace cannot establish — and replaces a lost package immediately, without
+          waiting on that trace.
+        </p>
 
         <h2>Opened Products</h2>
         <p>
