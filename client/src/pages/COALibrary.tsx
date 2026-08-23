@@ -12,13 +12,14 @@ const coas = [
     product: "GLP-3 (R)",
     fullName: "GLP-3 (Retatrutide)",
     category: "Metabolic Research",
-    batch: "2026001",
-    reportNo: "VL001-101",
-    purity: "99.5%",
-    purityNote: "*excludes bulking agents/excipients",
-    date: "Mar. 27, 2026",
-    lab: "Constitution Laboratories LLC",
-    test: "HPLC Purity",
+    batch: "9AXHAXN",
+    reportNo: "IF-824-QSA-TR006-BTL26658-21",
+    purity: "99.9%",
+    potency: "8.6 mg (86% of 10 mg label)",
+    purityNote: "*HPLC peptide purity (USP <621>); the potency assay falls below the report's 90–110% specification",
+    date: "Jun. 09, 2026",
+    lab: "BTLabs",
+    test: "FTIR ID + HPLC Purity",
     matrix: "Powder",
     pdf: "/coa/Retatrutide_COA.pdf",
     slug: "glp3r",
@@ -48,14 +49,14 @@ const coas = [
     product: "NAD+",
     fullName: "NAD+ (Nicotinamide Adenine Dinucleotide)",
     category: "Cellular Research",
-    batch: "2026001",
-    reportNo: "VL 079-101F",
-    purity: "99.6%",
-    purityNote: null,
-    date: "Mar. 27, 2026",
+    batch: "D006",
+    reportNo: "2026-000042",
+    purity: "99.2%",
+    purityNote: "*purity calculated by area percent",
+    date: "Jun. 04, 2026",
     lab: "Constitution Laboratories LLC",
     test: "HPLC Purity",
-    matrix: "Powder",
+    matrix: "Lyophilized Powder",
     pdf: "/coa/NAD_COA.pdf",
     slug: "nad",
     productSlug: "nad",
@@ -159,7 +160,7 @@ export default function COALibrary() {
     <div className="min-h-screen bg-page">
       <SEO
         title="COA Library"
-        description="Third-party Certificates of Analysis for all Vitum Lab research peptides. Verified by Constitution Laboratories LLC."
+        description="Third-party Certificates of Analysis for all Vitum Lab research peptides, issued by independent analytical laboratories."
       />
 
       {/* Header */}
@@ -175,7 +176,7 @@ export default function COALibrary() {
           <div className="mt-5 inline-flex items-center gap-2.5 bg-[oklch(0.97_0.003_260)] dark:bg-[oklch(0.19_0.02_260)] border border-[oklch(0.90_0.005_260)] dark:border-[oklch(0.26_0.02_260)] rounded-full px-4 py-2">
             <ShieldCheck className="w-4 h-4 text-[oklch(0.40_0.14_155)]" />
             <span className="text-[0.8125rem] font-semibold text-[oklch(0.30_0.01_260)] dark:text-[oklch(0.88_0.006_260)]">
-              Tested by Constitution Laboratories LLC
+              Independently third-party tested
             </span>
           </div>
         </div>
@@ -214,6 +215,8 @@ export default function COALibrary() {
                       ["Laboratory", c.lab],
                       ["Test Method", c.test],
                       ["Matrix", c.matrix],
+                      // Only some reports assay potency alongside purity.
+                      ...("potency" in c ? [["Potency", c.potency]] : []),
                     ].map(([label, value]) => (
                       <tr key={label}>
                         <td className="py-2 text-[oklch(0.52_0.01_260)] font-medium w-[45%]">{label}</td>
@@ -250,7 +253,7 @@ export default function COALibrary() {
 
         {/* Disclaimer */}
         <div className="mt-10 bg-[oklch(0.975_0.003_260)] rounded-2xl px-6 py-5 text-[0.8125rem] text-[oklch(0.50_0.01_260)] leading-relaxed max-w-3xl">
-          <strong className="text-[oklch(0.30_0.01_260)]">Note:</strong> All COAs are issued by Constitution Laboratories LLC, an independent third-party analytical laboratory. Certificates relate only to the specific batch tested and may not be reproduced without written approval. All products are for in vitro / laboratory research use only — not for human or veterinary consumption.
+          <strong className="text-[oklch(0.30_0.01_260)]">Note:</strong> Every COA is issued by an independent third-party analytical laboratory — the issuing lab is named on each card above and on the certificate itself. Certificates relate only to the specific batch tested and may not be reproduced without written approval. All products are for in vitro / laboratory research use only — not for human or veterinary consumption.
         </div>
       </div>
     </div>
