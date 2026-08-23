@@ -44,9 +44,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         min_order: Number(s?.referral_min_order ?? 0),
       },
       // Payment methods offered at checkout. A manual method appears only when
-      // enabled AND it has a handle to send to; Square appears only when enabled
-      // AND its server credentials are present. Handles are public (customers
-      // must see them to pay).
+      // enabled AND it has a handle to send to; crypto only when the server can
+      // create an invoice. Handles are public (customers must see them to pay).
       payments: buildPaymentOffer(s?.payment_config),
     });
   }
@@ -71,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .toLowerCase();
     if (!orderId || orderId.length > 64 || !email || email.length > 320) return res.status(400).json({ error: "Order number and email are required." });
 
-    const { data: order } = await supabaseAdmin.from("orders").select("id, email, items, net_amount, shipping_amount, status, fulfillment_status, tracking_number, carrier, created_at, confirmed_at, shipped_at, delivered_at, cancelled_at, cancel_reason").eq("id", orderId).maybeSingle();
+    const { data: order } = await supabaseAdmin.from("orders").select("id, email, items, net_amount, shipping_amount, credit_applied, status, fulfillment_status, tracking_number, carrier, created_at, confirmed_at, shipped_at, delivered_at, cancelled_at, cancel_reason").eq("id", orderId).maybeSingle();
 
     // Generic 404 on a miss OR an email mismatch — never reveal which failed,
     // and require the email to match so an order number alone isn't enough.

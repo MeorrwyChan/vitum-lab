@@ -33,19 +33,19 @@ const qualityTabs = [
   },
   {
     label: "Purity",
-    headline: "Identity Purity",
-    method: "Mass Spectrometry",
-    body: "Mass spectrometry confirms compound identity with no ambiguity. Every batch COA includes full spectral data available for download.",
+    headline: "Identity & Purity",
+    method: "FTIR + HPLC",
+    body: "Compound identity is confirmed by FTIR and purity measured by HPLC. Every batch Certificate of Analysis is published in full, including the peak data behind the figure.",
     badge: "COA Included",
     badgeSub: "Every batch",
   },
   {
-    label: "Safety",
-    headline: "Sterility Testing",
-    method: "USP <71> Protocol",
-    body: "Sterility and endotoxin testing follows USP <71> protocol. Lyophilized format ensures maximum stability and shelf life under standard laboratory storage conditions.",
-    badge: "Endotoxin Free",
-    badgeSub: "USP <71>",
+    label: "Stability",
+    headline: "Lyophilized Format",
+    method: "Shelf-stable in transit",
+    body: "Every vial ships lyophilized, which keeps it stable in transit without a cold chain. Store unopened vials at \u221220\u00b0C and use within 28 days once reconstituted.",
+    badge: "Lyophilized",
+    badgeSub: "No cold chain needed",
   },
 ];
 
@@ -110,12 +110,17 @@ function DoseSelectorCard({ name, category, description, cardBg, variants, badge
   const { isAvailable } = useInventory();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [added, setAdded] = useState(false);
-  const selected = variants[selectedIdx];
-  const available = isAvailable(selected.cartCode);
-  const effectivePrice = selected.salePrice ?? selected.price;
+  // liveVariants() returns [] for any slug missing from /api/products, which
+  // includes every product an admin marks inactive. Indexing that blindly threw
+  // and took the whole homepage down on a routine catalog toggle.
+  const selected = variants[Math.min(selectedIdx, variants.length - 1)];
+  const available = isAvailable(selected?.cartCode ?? "");
+  const effectivePrice = selected?.salePrice ?? selected?.price ?? 0;
+
+  if (!selected) return null;
 
   const handleAdd = () => {
-    if (!available) return;
+    if (!available || !selected) return;
     addItem({ id: selected.id, name, dose: selected.dose, price: effectivePrice, img: selected.img, cartCode: selected.cartCode });
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);

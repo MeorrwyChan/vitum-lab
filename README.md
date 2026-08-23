@@ -2,7 +2,7 @@
 
 Vitum Lab is a React storefront for research peptides, deployed on Vercel with Supabase-backed products, inventory, orders, authentication, affiliates, and rewards.
 
-The checkout supports Square card payments, admin-verified Zelle/Cash App/Venmo/ACH transfers, and NowPayments crypto. Prices, discounts, store credit, inventory, and payment state are calculated or verified server-side.
+The checkout supports admin-verified Zelle/Cash App/Venmo/ACH transfers and NowPayments crypto. Prices, discounts, store credit, inventory, and payment state are calculated or verified server-side.
 
 ## Stack
 

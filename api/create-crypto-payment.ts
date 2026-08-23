@@ -6,7 +6,6 @@ import { getBalance, reserveCredit, reserveDiscountRedemption, releaseDiscountRe
 import { validateAddress } from "./_lib/shippo.js";
 import { buildOrderId } from "./_lib/orderId.js";
 import { requireUser } from "./_lib/requireUser.js";
-import { chargeSquare, squareConfigured } from "./_lib/square.js";
 import { confirmPaidOrder, sendConfirmationEmails, recordLatePayment, ORDER_COLS } from "./_lib/fulfillment.js";
 import { normalizeShippingAddress } from "./_lib/address.js";
 import { buildPaymentOffer, isManualPaymentMethod, isPaymentMethod, paymentMethodEnabled, type PaymentMethod } from "./_lib/paymentConfig.js";
@@ -569,6 +568,9 @@ export default async function handler(req: any, res: any) {
         discount_code: discountCodeNorm,
         net_amount: netAmount,
         shipping_amount: shippingAmount,
+        // orderTotal() is net + shipping - credit_applied; omitting it overstates
+        // the printed total and hides the "Store credit" line on the receipt.
+        credit_applied: creditApplied,
         shipping_address: normalizedShipping,
         emails_sent: {},
       };
@@ -583,8 +585,8 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // Normalize the chosen payment method. A card token → Square. No token + a
-    // manual method → awaiting-transfer order. Otherwise crypto.
+    // Normalize the chosen payment method. A manual method → awaiting-transfer
+    // order. Otherwise crypto.
     // The storefront setting is an authorization decision too: a crafted
     // request cannot resurrect a method the owner disabled.
     const payMethod: PaymentMethod = rawMethod;
@@ -647,110 +649,6 @@ export default async function handler(req: any, res: any) {
       shipping_address: normalizedShipping,
       emails_sent: {},
     });
-
-    // ── Square (live card processing) — charge the exact amountDue ───────────
-    // The client tokenizes the card with the Web Payments SDK and sends a
-    // single-use `squareToken` (source_id); we charge the server-computed
-    // amountDue via the Payments API (never a client price).
-    if (payMethod === "square") {
-      const squareToken = typeof (req.body as { squareToken?: unknown }).squareToken === "string" ? (req.body as { squareToken: string }).squareToken : "";
-      if (!squareToken || !squareConfigured()) {
-        await supabaseAdmin.from("orders").update({ status: "failed" }).eq("id", orderId);
-        await releaseDiscountRedemption(orderId);
-        res.status(400).json({
-          error: "Card payments aren't available right now. Please choose another method.",
-        });
-        return;
-      }
-      try {
-        const result = await chargeSquare({
-          sourceId: squareToken,
-          amountDue,
-          orderId,
-          email,
-        });
-        await supabaseAdmin
-          .from("orders")
-          .update({ payment_id: result.paymentId || null })
-          .eq("id", orderId);
-        if (result.status === "succeeded") {
-          const { data: ord } = await supabaseAdmin.from("orders").select(ORDER_COLS).eq("id", orderId).maybeSingle();
-          try {
-            const claimed =
-              !!ord &&
-              (await confirmPaidOrder(ord, {
-                payCurrency: "USD",
-                payAmount: amountDue,
-                paymentId: result.paymentId,
-              }));
-            if (!claimed) {
-              const { data: current } = await supabaseAdmin.from("orders").select("status").eq("id", orderId).maybeSingle();
-              if (current?.status !== "confirmed" && current?.status !== "finished") {
-                throw new Error(`Paid Square order could not be confirmed (current status: ${current?.status ?? "missing"}).`);
-              }
-            }
-            if (ord) deferEmail(sendConfirmationEmails(ord));
-          } catch (confirmError) {
-            console.error("Square payment captured but fulfillment needs review:", confirmError);
-            // The card IS captured. Stamp the order so the 24h expiry sweep can't
-            // cancel it and email the customer "No payment was collected for this
-            // order." while Square holds their money.
-            await supabaseAdmin
-              .from("orders")
-              .update({ payment_captured_at: new Date().toISOString() })
-              .eq("id", orderId);
-            if (ord) {
-              await recordLatePayment(
-                ord,
-                {
-                  payCurrency: "USD",
-                  payAmount: amountDue,
-                  paymentId: result.paymentId,
-                },
-                `Payment captured by Square but order confirmation failed: ${confirmError instanceof Error ? confirmError.message : "unknown error"}. Review inventory and fulfill or refund manually.`
-              ).catch(() => {});
-            }
-            res.status(202).json({ paid: true, pendingReview: true, orderId });
-            return;
-          }
-          res.status(200).json({ paid: true, orderId });
-          return;
-        }
-        // Declined — fail the order (releases reserved credit + the one-use slot).
-        await supabaseAdmin.from("orders").update({ status: "failed" }).eq("id", orderId);
-        await releaseDiscountRedemption(orderId);
-        res.status(402).json({ error: result.error });
-        return;
-      } catch (err) {
-        // chargeSquare only throws when the request to Square itself fails
-        // (DNS/TLS/socket reset/timeout) — the response parse is guarded. So a
-        // capture that succeeded but whose response was lost in transit is
-        // INDISTINGUISHABLE here from a payment that never happened.
-        //
-        // Resolving that ambiguity as "declined" is the unsafe direction: it
-        // marked the order failed and told the customer to try again, and each
-        // retry mints a fresh order id — which is the Square idempotency key — so
-        // the second attempt captures a second time. Money taken twice, one order,
-        // no alert. Leave the order pending, stamp it so auto-expiry can't cancel
-        // it, alert ops, and give the customer a neutral "we're confirming your
-        // payment" state instead of an invitation to double-pay.
-        console.error("Square charge error:", err);
-        const detail = err instanceof Error ? err.message : "unknown error";
-        await supabaseAdmin
-          .from("orders")
-          .update({
-            payment_captured_at: new Date().toISOString(),
-            admin_notes: `Square charge request failed in transit (${detail}). The capture may or may not have gone through — check Square for a payment with reference_id ${orderId} before refunding or re-charging, then Mark Paid or Cancel.`,
-          })
-          .eq("id", orderId);
-        await notifyAdmin(
-          `Square charge unresolved — order ${orderId}`,
-          `The request to Square failed in transit (${detail}) for order ${orderId} ($${amountDue.toFixed(2)}).\n\nThe payment may still have been captured. Look up reference_id ${orderId} in the Square dashboard, then either Mark Paid or Cancel the order in Admin → Orders. It is held out of auto-expiry until you do.`
-        ).catch(() => {});
-        res.status(202).json({ paid: true, pendingReview: true, orderId });
-        return;
-      }
-    }
 
     // ── Manual peer-to-peer transfer (Zelle / Cash App / Venmo / bank ACH) ───
     // No automated confirmation exists for these — the order stays pending with
@@ -829,6 +727,9 @@ export default async function handler(req: any, res: any) {
       discount_code: discountCodeNorm,
       net_amount: netAmount,
       shipping_amount: shippingAmount,
+      // orderTotal() is net + shipping - credit_applied; omitting it overstates
+      // the printed total and hides the "Store credit" line on the receipt.
+      credit_applied: creditApplied,
       shipping_address: normalizedShipping,
       emails_sent: {},
     };

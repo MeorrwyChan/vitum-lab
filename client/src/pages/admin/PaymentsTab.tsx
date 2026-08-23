@@ -1,17 +1,16 @@
 /*
  * PaymentsTab.tsx — configure the checkout's payment methods.
- * Square (live cards, credentials via Vercel env) + manual peer-to-peer methods
- * (Zelle / Cash App / Venmo / bank ACH, admin-verified) + crypto (NowPayments).
+ * Manual peer-to-peer methods (Zelle / Cash App / Venmo / bank ACH,
+ * admin-verified) + crypto (NowPayments).
  * Manual handles are shown to customers at checkout, so they're saved to
  * store_settings.payment_config via /api/admin/payment-config.
  */
 import { useState, useEffect, useCallback } from "react";
-import { CreditCard, Loader2, Check, Wallet } from "lucide-react";
+import { Loader2, Check, Wallet } from "lucide-react";
 import { authedFetch } from "@/lib/api";
 
 interface ManualCfg { enabled: boolean; handle: string; instructions: string }
 interface Config {
-  square: { enabled: boolean };
   zelle: ManualCfg; cashapp: ManualCfg; venmo: ManualCfg; ach: ManualCfg;
   crypto: { enabled: boolean };
 }
@@ -27,7 +26,6 @@ const EMPTY_MANUAL: ManualCfg = { enabled: false, handle: "", instructions: "" }
 
 export default function PaymentsTab() {
   const [cfg, setCfg] = useState<Config | null>(null);
-  const [squareConfigured, setSquareConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -38,14 +36,12 @@ export default function PaymentsTab() {
       const d = await res.json();
       const p = d.payment_config ?? {};
       setCfg({
-        square: { enabled: !!p.square?.enabled },
         zelle: { ...EMPTY_MANUAL, ...p.zelle },
         cashapp: { ...EMPTY_MANUAL, ...p.cashapp },
         venmo: { ...EMPTY_MANUAL, ...p.venmo },
         ach: { ...EMPTY_MANUAL, ...p.ach },
         crypto: { enabled: p.crypto?.enabled !== false },
       });
-      setSquareConfigured(!!d.square_configured);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -79,19 +75,6 @@ export default function PaymentsTab() {
         Turn methods on and set the handle customers send to. Manual transfers (Zelle / Cash App / Venmo / ACH) create an
         order marked <span className="font-semibold">Awaiting payment</span> — verify it landed, then hit <span className="font-semibold">Mark paid</span> in Orders.
       </p>
-
-      {/* Square (live cards) */}
-      <div className="rounded-xl border border-[oklch(0.92_0.004_260)] p-4">
-        <label className="flex items-center justify-between cursor-pointer">
-          <span className="flex items-center gap-2 font-semibold text-[oklch(0.20_0.01_260)]"><CreditCard className="w-4 h-4" /> Card (Square)</span>
-          <input type="checkbox" checked={cfg.square.enabled} onChange={(e) => setCfg({ ...cfg, square: { enabled: e.target.checked } })} className="w-4 h-4 accent-[oklch(0.40_0.16_260)]" />
-        </label>
-        <p className={`text-[0.75rem] mt-2 ${squareConfigured ? "text-[oklch(0.40_0.10_155)]" : "text-[oklch(0.55_0.12_50)]"}`}>
-          {squareConfigured
-            ? "✓ Square credentials detected. Cards charge live once enabled."
-            : "⚠️ Add SQUARE_ACCESS_TOKEN + SQUARE_LOCATION_ID + SQUARE_ENVIRONMENT (and the VITE_SQUARE_* build vars) in Vercel — the card option stays hidden from customers until they're set, even if enabled here."}
-        </p>
-      </div>
 
       {/* Manual P2P methods */}
       {MANUAL.map(({ key, label, placeholder }) => (

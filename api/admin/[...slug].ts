@@ -5,7 +5,6 @@ import { sendOrderEvent, sendBackInStock, sendAffiliateCommission, deferEmail, t
 import { buyLabel, getTrackingStatus, shippoConfigured, shipFromConfigured, shipFromPhoneConfigured } from "../_lib/shippo.js";
 import { getRewardConfig, earnLoyalty, grantReferralReward, releaseDiscountRedemption } from "../_lib/credit.js";
 import { cancelOrder, confirmPaidOrder, sendConfirmationEmails, ORDER_COLS } from "../_lib/fulfillment.js";
-import { squareConfigured } from "../_lib/square.js";
 import { orderCashDue, round2, isSitewideActive } from "../_lib/pricing.js";
 import { isManualPaymentMethod } from "../_lib/paymentConfig.js";
 import { estimateNowPaymentUsd, estimatedUsdCoversOrder, verifyNowPayment } from "../_lib/nowPayments.js";
@@ -67,10 +66,28 @@ function normalizeVariants(value: unknown): { ok: true; variants: Record<string,
   return { ok: true, variants };
 }
 
+/**
+ * Checkout resolves a typed code affiliates -> promo_codes -> referral_codes and
+ * returns on the first hit, so the three tables share ONE namespace that no
+ * UNIQUE constraint can span. Without this check an affiliate code silently
+ * shadows an advertised promo — and takes its max_uses and per-customer cap out
+ * of play, since both are gated on the promo branch.
+ */
+async function codeTakenElsewhere(code: string, exclude: "affiliates" | "promo_codes"): Promise<string | null> {
+  const tables = (["affiliates", "promo_codes", "referral_codes"] as const).filter(t => t !== exclude);
+  for (const t of tables) {
+    const { data } = await supabaseAdmin.from(t).select("code").eq("code", code).maybeSingle();
+    if (data) return t === "affiliates" ? "an affiliate" : t === "promo_codes" ? "a promo" : "a customer referral";
+  }
+  return null;
+}
+
 // Notify (once) everyone on the back-in-stock waitlist for a cart_code that
 // just went from 0 → in stock, then mark those rows notified.
 async function notifyWaitlist(cartCode: string) {
-  const { data: subs } = await supabaseAdmin.from("stock_waitlist").select("id, email").eq("cart_code", cartCode).is("notified_at", null);
+  // Bounded: this runs inside waitUntil(), so an unbounded list can hit the
+  // function's max duration partway through.
+  const { data: subs } = await supabaseAdmin.from("stock_waitlist").select("id, email").eq("cart_code", cartCode).is("notified_at", null).limit(200);
   if (!subs || subs.length === 0) return;
 
   const { data: products } = await supabaseAdmin.from("products").select("name, slug, variants");
@@ -99,17 +116,16 @@ async function notifyWaitlist(cartCode: string) {
   // the "notify me" signal for every subscriber whose send threw — they stay
   // subscribed-but-notified forever and never hear that the item came back.
   // Failed rows keep notified_at NULL so the next 0 → in-stock save retries them.
-  const notified: string[] = [];
+  // Marked per row as each send lands, not batched at the end: this loop runs
+  // under a function timeout, and a batch write that never executes would leave
+  // everyone unmarked — so the next restock re-emails people who already heard.
   for (const s of subs) {
     try {
       await sendBackInStock(s.email as string, { name, url, image });
-      notified.push(s.id as string);
+      await supabaseAdmin.from("stock_waitlist").update({ notified_at: new Date().toISOString() }).eq("id", s.id as string);
     } catch (err) {
       console.error(`back-in-stock email failed for waitlist row ${s.id}:`, err);
     }
-  }
-  if (notified.length > 0) {
-    await supabaseAdmin.from("stock_waitlist").update({ notified_at: new Date().toISOString() }).in("id", notified);
   }
 }
 
@@ -381,7 +397,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     // (round2 comes from _lib/pricing — the EPSILON-nudged money rounder; a
     // local copy here shadowed it and could drift a half-cent on owed totals.)
+    // Only affiliates that still exist. A deleted affiliate's orders keep their
+    // affiliate_id and commission_amount (no FK), so tallying by id alone left an
+    // orphaned, unpayable balance inflating "Commissions Owed" forever.
     const commissionsByAffiliate = [...new Set([...Object.keys(commTally), ...Object.keys(paidOutTally)])]
+      .filter(id => affById.has(id))
       .map(id => {
         const a = affById.get(id);
         const earned = commTally[id]?.amount ?? 0;
@@ -1170,16 +1190,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // ── /api/admin/payment-config — Square + manual (Zelle/Cash App/Venmo/ACH)
-  // + crypto method config. Handles are shown to customers, so keep them clean. ─
+  // ── /api/admin/payment-config — manual (Zelle/Cash App/Venmo/ACH) + crypto
+  // method config. Handles are shown to customers, so keep them clean. ─
   if (route === "payment-config") {
     if (req.method === "GET") {
       const { data, error } = await supabaseAdmin.from("store_settings").select("payment_config").maybeSingle();
       if (error) return res.status(500).json({ error: "Failed to load payment config" });
-      return res.json({
-        payment_config: data?.payment_config ?? {},
-        square_configured: squareConfigured(),
-      });
+      return res.json({ payment_config: data?.payment_config ?? {} });
     }
     if (req.method === "PUT") {
       const b = (req.body?.payment_config ?? {}) as Record<string, any>;
@@ -1198,7 +1215,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data: existing } = await supabaseAdmin.from("store_settings").select("payment_config").maybeSingle();
       const payment_config = {
         ...((existing?.payment_config ?? {}) as Record<string, unknown>),
-        square: { enabled: !!b.square?.enabled },
         zelle: manual("zelle"),
         cashapp: manual("cashapp"),
         venmo: manual("venmo"),
@@ -1207,10 +1223,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
       const { data, error } = await supabaseAdmin.from("store_settings").upsert({ id: true, payment_config, updated_at: new Date().toISOString() }, { onConflict: "id" }).select("payment_config").maybeSingle();
       if (error) return res.status(400).json({ error: error.message });
-      return res.json({
-        payment_config: data?.payment_config ?? payment_config,
-        square_configured: squareConfigured(),
-      });
+      return res.json({ payment_config: data?.payment_config ?? payment_config });
     }
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -1278,6 +1291,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .toUpperCase();
       if (normalizedEmail.length > 320 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail) || !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(normalizedCode)) return res.status(400).json({ error: "A valid email and code are required" });
       if (name != null && (typeof name !== "string" || name.length > 200)) return res.status(400).json({ error: "Affiliate name is too long" });
+      const affClash = await codeTakenElsewhere(normalizedCode, "affiliates");
+      if (affClash) return res.status(409).json({ error: `That code is already in use by ${affClash} code.` });
       const { data, error } = await supabaseAdmin
         .from("affiliates")
         .insert({
@@ -1302,6 +1317,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         allowed[k] = k === "code" ? String(patch[k]).toUpperCase().trim() : k === "discount_percent" || k === "commission_percent" ? clampPct(patch[k]) : patch[k];
       }
       if (allowed.code !== undefined && !/^[A-Z0-9][A-Z0-9_-]{0,63}$/.test(String(allowed.code))) return res.status(400).json({ error: "Invalid affiliate code" });
+      if (allowed.code !== undefined) {
+        const clash = await codeTakenElsewhere(String(allowed.code), "affiliates");
+        if (clash) return res.status(409).json({ error: `That code is already in use by ${clash} code.` });
+      }
       if (allowed.email !== undefined) {
         const normalizedEmail = String(allowed.email).trim().toLowerCase();
         if (normalizedEmail.length > 320 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) return res.status(400).json({ error: "Invalid affiliate email" });
@@ -1417,6 +1436,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       if ((starts_at && !Number.isFinite(Date.parse(starts_at))) || (expires_at && !Number.isFinite(Date.parse(expires_at))) || (starts_at && expires_at && Date.parse(starts_at) > Date.parse(expires_at))) return res.status(400).json({ error: "Promo dates are invalid" });
       if (is_active != null && typeof is_active !== "boolean") return res.status(400).json({ error: "is_active must be boolean" });
+      const promoClash = await codeTakenElsewhere(normalizedCode, "promo_codes");
+      if (promoClash) return res.status(409).json({ error: `That code is already in use by ${promoClash} code.` });
       const { data, error } = await supabaseAdmin
         .from("promo_codes")
         .insert({

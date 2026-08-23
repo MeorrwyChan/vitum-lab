@@ -2,8 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    // nodenext (not bundler) so tsc actually enforces the .js extension on every
+    // relative import — package.json is "type": "module", so a bare specifier is
+    // ERR_MODULE_NOT_FOUND at runtime on Vercel. bundler silently accepted them.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,

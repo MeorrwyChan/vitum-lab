@@ -3,7 +3,8 @@
  * Displays all third-party Certificates of Analysis with PDF download links
  */
 
-import { FileText, ExternalLink, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FileText, ExternalLink, ShieldCheck, Search } from "lucide-react";
 import { Link } from "wouter";
 import SEO from "@/components/SEO";
 
@@ -155,6 +156,20 @@ const coas = [
 ];
 
 export default function COALibrary() {
+  // The FAQ and About both tell customers they can search this library by
+  // product, lot number and test date. Until now there was no search at all.
+  const [query, setQuery] = useState("");
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return coas;
+    return coas.filter((c) =>
+      [c.product, c.fullName, c.category, c.batch, c.reportNo, c.date, c.lab]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [query]);
+
   return (
     <div className="min-h-screen bg-page">
       <SEO
@@ -183,8 +198,27 @@ export default function COALibrary() {
 
       {/* COA Cards */}
       <div className="container py-12">
+        {/* Search — by product, lot number or test date */}
+        <div className="relative mb-6 max-w-md">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[oklch(0.58_0.01_260)]" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by product, lot number, or test date"
+            aria-label="Search certificates by product, lot number, or test date"
+            className="w-full min-h-11 rounded-full border border-[oklch(0.90_0.005_260)] dark:border-[oklch(0.28_0.02_260)] bg-white dark:bg-[oklch(0.17_0.02_260)] pl-10 pr-4 py-2.5 text-[0.875rem] text-[oklch(0.20_0.01_260)] dark:text-[oklch(0.90_0.006_260)] placeholder:text-[oklch(0.58_0.01_260)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.40_0.16_260)]"
+          />
+        </div>
+
+        {shown.length === 0 && (
+          <p className="text-[0.875rem] text-[oklch(0.52_0.01_260)] py-6">
+            No certificates match “{query}”. Try a product name, a lot number, or a report date.
+          </p>
+        )}
+
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {coas.map((c) => (
+          {shown.map((c) => (
             <div
               key={c.slug}
               id={c.slug}
@@ -250,7 +284,7 @@ export default function COALibrary() {
 
         {/* Disclaimer */}
         <div className="mt-10 bg-[oklch(0.975_0.003_260)] rounded-2xl px-6 py-5 text-[0.8125rem] text-[oklch(0.50_0.01_260)] leading-relaxed max-w-3xl">
-          <strong className="text-[oklch(0.30_0.01_260)]">Note:</strong> Every COA is issued by an independent third-party analytical laboratory — the issuing lab is named on each card above and on the certificate itself. Certificates relate only to the specific batch tested and may not be reproduced without written approval. All products are for in vitro / laboratory research use only — not for human or veterinary consumption.
+          <strong className="text-[oklch(0.30_0.01_260)]">Note:</strong> Every COA is issued by an independent third-party analytical laboratory — the issuing lab is named on each card above and on the certificate itself. Where a certificate was commissioned by a supplier rather than by us, the commissioning party is named on the document. Certificates relate only to the specific batch tested and may not be reproduced without written approval. All products are for in vitro / laboratory research use only — not for human or veterinary consumption.
         </div>
       </div>
     </div>

@@ -127,9 +127,27 @@
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://vitumlab.com/terms</loc>
-    <lastmod>2026-07-19</lastmod>
+    <loc>https://vitumlab.com/terms-of-service</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://vitumlab.com/return-policy</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://vitumlab.com/research-disclaimer</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://vitumlab.com/reconstitution-calculator</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
 </urlset>

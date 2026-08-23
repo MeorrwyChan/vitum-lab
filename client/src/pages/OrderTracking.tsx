@@ -15,6 +15,7 @@ interface TrackedOrder {
   items?: { name: string; dose: string; quantity: number; cartCode?: string; price?: number }[];
   net_amount?: number;
   shipping_amount?: number | null;
+  credit_applied?: number | null;
   status: string;
   fulfillment_status?: string | null;
   tracking_number?: string | null;
@@ -96,7 +97,7 @@ export default function OrderTracking() {
             <div className="flex items-center justify-between mb-4">
               <span className="font-mono text-[0.75rem] text-[oklch(0.55_0.01_260)]">{formatOrderId(order.id)}</span>
               {order.net_amount != null && (
-                <span className="text-[0.875rem] font-bold text-[oklch(0.13_0.01_260)]">${(Number(order.net_amount) + Number(order.shipping_amount ?? 0)).toFixed(2)}</span>
+                <span className="text-[0.875rem] font-bold text-[oklch(0.13_0.01_260)]">${(Number(order.net_amount) + Number(order.shipping_amount ?? 0) - Number(order.credit_applied ?? 0)).toFixed(2)}</span>
               )}
             </div>
 

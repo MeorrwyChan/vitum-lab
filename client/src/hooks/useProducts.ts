@@ -52,7 +52,13 @@ async function fetchProducts(): Promise<Product[]> {
       cache = rows.map(dbRowToProduct);
       return cache;
     })
-    .catch(() => staticProducts);
+    .catch(() => {
+      // Clear the memo so a later mount retries. Leaving the settled fallback
+      // promise in place pinned the whole session to hardcoded prices — which
+      // the server then rejects at checkout as a price mismatch.
+      fetchPromise = null;
+      return staticProducts;
+    });
 
   return fetchPromise;
 }

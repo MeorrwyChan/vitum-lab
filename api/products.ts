@@ -13,7 +13,12 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     supabaseAdmin.from("store_settings").select("*").maybeSingle(),
   ]);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    // Public, unauthenticated endpoint — a raw PostgREST error names tables,
+    // columns, constraints, roles and RLS state. Log it, return nothing.
+    console.error("products: query failed:", error);
+    return res.status(500).json({ error: "Failed to load products" });
+  }
 
   // When a site-wide sale is active (within its scheduled window), project it
   // onto every variant's sale_price so the storefront renders the strikethrough

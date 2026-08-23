@@ -126,8 +126,11 @@ export async function buyLabel(order: { email: string; shipping_address?: Shippo
   }
 
   return {
+    // Record the provider actually bought — the rate fallback can land on a
+    // non-USPS rate, and a wrong carrier here breaks both the customer's
+    // tracking link and the delivery polling above.
     tracking_number: txn.tracking_number,
-    carrier: "USPS",
+    carrier: (rate.provider || "USPS").toUpperCase(),
     label_url: txn.label_url,
     tracking_url: txn.tracking_url_provider ?? null,
   };
@@ -168,13 +171,25 @@ export async function validateAddress(a: ShippoAddress): Promise<{ valid: boolea
   }
 }
 
+/** Shippo's carrier slug for a free-text carrier name. Defaults to USPS. */
+function carrierSlug(carrier?: string | null): string {
+  const c = String(carrier ?? "").toUpperCase();
+  if (c.includes("UPS")) return "ups";
+  if (c.includes("FEDEX") || c.includes("FED EX")) return "fedex";
+  if (c.includes("DHL")) return "dhl_express";
+  return "usps";
+}
+
 /**
- * Current USPS tracking status for a number (e.g. "DELIVERED", "TRANSIT").
+ * Current tracking status for a number (e.g. "DELIVERED", "TRANSIT").
  * Hitting this endpoint also registers the number with Shippo for webhooks.
+ * The carrier must match the one the label was bought from — polling a UPS
+ * number on the USPS path never returns DELIVERED, which silently strands the
+ * delivered + follow-up emails.
  */
-export async function getTrackingStatus(tracking: string): Promise<string | null> {
+export async function getTrackingStatus(tracking: string, carrier?: string | null): Promise<string | null> {
   try {
-    const res = await fetch(`${SHIPPO_API}/tracks/usps/${encodeURIComponent(tracking)}`, { headers: headers() });
+    const res = await fetch(`${SHIPPO_API}/tracks/${carrierSlug(carrier)}/${encodeURIComponent(tracking)}`, { headers: headers() });
     if (!res.ok) return null;
     const data = await res.json();
     return (data?.tracking_status?.status as string) ?? null;

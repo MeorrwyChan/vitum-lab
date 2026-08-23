@@ -21,6 +21,7 @@ import { capturePromoFromUrl } from "./lib/promo";
 import Home from "./pages/Home";
 import { AuthProvider } from "./contexts/AuthContext";
 import { Analytics } from "@vercel/analytics/react";
+import { analyticsAllowed } from "./lib/consent";
 
 // Keep the landing page eager and split every secondary surface by route. In
 // particular, charting/admin and payment SDK code should never delay the first
@@ -169,7 +170,9 @@ function App() {
             <Toaster />
             <AppLayout />
             <CartDrawer />
-            <Analytics />
+            {/* Only when the visitor has not declined — the banner offered a
+                Decline button that nothing acted on. */}
+            {analyticsAllowed() && <Analytics />}
           </CartProvider>
         </AuthProvider>
       </ThemeProvider>

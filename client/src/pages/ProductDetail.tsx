@@ -10,7 +10,8 @@ import { ArrowLeft, FileText, Check, ChevronDown, ChevronUp, ShieldCheck, Truck,
 import { useCart } from "@/contexts/CartContext";
 import { useProducts } from "@/hooks/useProducts";
 import { useInventory } from "@/hooks/useInventory";
-import { quantityDiscountPercent, round2 } from "@/lib/discounts";
+import { quantityDiscountPercent, round2, SHIPPING_FEE, FREE_SHIPPING_THRESHOLD } from "@/lib/discounts";
+import { fetchSiteConfig } from "@/hooks/useSiteConfig";
 import ReconstitutionCalculator from "@/components/ReconstitutionCalculator";
 import SEO from "@/components/SEO";
 
@@ -98,8 +99,8 @@ export default function ProductDetail() {
   // Quantity discount tiers (drives the "buy more, save more" selector).
   useEffect(() => {
     let stale = false;
-    fetch("/api/public/site")
-      .then((r) => r.json())
+    // Shared cached fetch — SaleBanner already loads this on every page.
+    fetchSiteConfig()
       .then((d) => { if (!stale) setTiers(d.quantity_tiers ?? []); })
       .catch(() => {});
     return () => { stale = true; };
@@ -115,7 +116,9 @@ export default function ProductDetail() {
     );
   }
 
-  const selected = product.variants[selectedIdx];
+  // selectedIdx survives the re-render from the static fallback to the live
+  // catalog, which may have fewer variants. Shop's card already clamps.
+  const selected = product.variants[Math.min(selectedIdx, product.variants.length - 1)];
   const available = isAvailable(selected.cartCode);
   const stockCount = stockDisplay(selected.cartCode);
   const effectivePrice = selected.salePrice ?? selected.price;
@@ -168,7 +171,8 @@ export default function ProductDetail() {
         "@type": "OfferShippingDetails",
         shippingRate: {
           "@type": "MonetaryAmount",
-          value: (v.salePrice ?? v.price) >= 75 ? "0.00" : "10.00",
+          // From the shared constants, which the client/server parity test guards.
+          value: (v.salePrice ?? v.price) >= FREE_SHIPPING_THRESHOLD ? "0.00" : SHIPPING_FEE.toFixed(2),
           currency: "USD",
         },
         shippingDestination: { "@type": "DefinedRegion", addressCountry: "US" },

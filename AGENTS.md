@@ -37,7 +37,6 @@ client/src/
                     ProductModal.tsx, and self-contained ShippingTab/CustomersTab/PromosTab/AffiliatesTab/PaymentsTab.
                     Parent AdminDashboard.tsx keeps Overview/Products/Inventory/Orders + loadData + order state.
   components/       Navbar, Footer, CartDrawer, OrderTimeline, AddressAutocomplete, SEO,
-                    SquareCardBox.tsx (in-browser Square card tokenization → single-use source_id),
                     ManualPaymentModal.tsx (Zelle/Cash App/Venmo/ACH "send your payment" modal), …
   lib/
     products.ts     Static fallback catalog — authoritative data is Supabase `products` via /api/products (useProducts)
@@ -93,10 +92,6 @@ api/                Vercel serverless functions — ALL relative imports MUST us
     credit.ts          Store credit ledger + loyalty + referrals (getBalance, reserveCredit, earnLoyalty,
                        grantReferralReward, reserveDiscountRedemption, getRewardConfig); uses pricing.round2/cashPaidBasis
     orderLifecycle.ts  paidIpnAction — pure paid-IPN classifier (pending→fulfill, confirmed→resend, dead→late_payment) — tested
-    square.ts          chargeSquare — Square Payments API (raw REST, no SDK); charges exact amountDue (cents) against a
-                       Web-Payments source_id; idempotency key = order id; autocomplete:true; confirms ONLY on a COMPLETED
-                       capture (refuses APPROVED holds); maps decline codes to safe copy; notifyAdmin on anomalies.
-                       squareConfigured() gates the card tile.
     fulfillment.ts     Shared confirm-paid-order steps (confirmPaidOrder + emails, loyalty/referral, late-payment) — all idempotent
     requireUser/requireAdmin/requireAffiliate.ts  JWT validation (reject unverified email); admins/affiliates table checks
 
@@ -118,13 +113,12 @@ supabase/migrations/  SQL migrations
 
 ## Payments
 
-**Three methods, one checkout, server-authoritative pricing** (the exact `amountDue` — see Key data flow #4). Which methods appear is driven by `store_settings.payment_config`, surfaced without a client rebuild via `/api/public/site` → `payments` (`buildPaymentOffer`), edited in **Admin → Payments** (PaymentsTab).
+**Two method families, one checkout, server-authoritative pricing** (the exact `amountDue` — see Key data flow #4). Which methods appear is driven by `store_settings.payment_config`, surfaced without a client rebuild via `/api/public/site` → `payments` (`buildPaymentOffer`), edited in **Admin → Payments** (PaymentsTab).
 
-**Checkout method selector (`Checkout.tsx`):** **Card (Square) · Zelle · Cash App · Venmo · Bank transfer (ACH) · Crypto.** A tile shows only when offered: **Square** when enabled AND the server has credentials (`squareConfigured()`); a **manual** method when enabled AND it has a handle; **crypto** when enabled AND `NOWPAYMENTS_API_KEY` is set (defaults on). Tiles are brand-coloured per method (`METHOD_STYLE`); the Card tile shows inline-SVG accepted-card marks. The order summary has a two-stage $75/$100 free-shipping/free-gift nudge, pastel trust chips, and an optional **Shipping Protection** checkbox.
+**Checkout method selector (`Checkout.tsx`):** **Zelle · Cash App · Venmo · Bank transfer (ACH) · Crypto.** A tile shows only when offered: a **manual** method when enabled AND it has a handle; **crypto** when enabled AND `NOWPAYMENTS_API_KEY` is set (defaults on). Tiles are brand-coloured per method (`METHOD_STYLE`). The order summary has a two-stage $75/$100 free-shipping/free-gift nudge, pastel trust chips, and an optional **Shipping Protection** checkbox. **Cards are not accepted** — Square was removed in full (no code, routes, or env vars remain).
 
 **How `create-crypto-payment` routes by `paymentMethod`:**
 - **$0 due** (100%-off / full store credit) → confirmed immediately, skips every processor.
-- **Card (`square`)** → `chargeSquare` charges the card **synchronously, no webhook**; confirms only on a `COMPLETED` capture. `SquareCardBox.tsx` tokenizes in-browser (raw PAN never hits our server). *(Mechanics: `_lib/square.ts`.)*
 - **Manual (`zelle`/`cashapp`/`venmo`/`ach`)** → order placed **pending** with the send-to handle shown (`ManualPaymentModal.tsx` + the order-success "awaiting" countdown). Customer sends money out-of-band with the **order number in the memo**, taps **"I've Sent the Payment"** (`POST /api/account/payment-sent` → alerts the payment inbox). Admin verifies and clicks **Mark Paid** in Admin → Orders. Auto-expires if unpaid (see [Scheduled jobs](#supabase-schema)).
 - **Crypto** → a NowPayments hosted invoice; the IPN (`/api/nowpayments-webhook`, HMAC-verified, amount-guarded) confirms it. Auto-expires if unpaid.
 
@@ -132,7 +126,7 @@ supabase/migrations/  SQL migrations
 
 **Customer-facing payment copy must stay processor-agnostic.** The shared order-status pages (`OrderSuccess.tsx`, `OrderCancel.tsx`) say "your payment" — never name a processor/"blockchain"/"coin". `OrderSuccess` reads `?free=1`/`?awaiting=1` (+ `method`/`amt`/`exp`) for tone + manual send-to instructions, but its confirmed/processing copy stays method-neutral. The **only** places naming a method are the checkout tiles, the manual-payment modal, and the FAQ payment answer (owner-decision copy — leave as-is).
 
-*Go-live steps: see [Open / Outstanding](#open--outstanding). TagadaPay (a former card processor) is fully removed — no code, routes, or env vars remain. NowPayments' invoice page also offers a card/Apple-Pay on-ramp (Guardarian/Banxa) — storefront copy left as-is by owner decision.*
+*Go-live steps: see [Open / Outstanding](#open--outstanding). TagadaPay and Square (former card processors) are fully removed — no code, routes, or env vars remain. NowPayments' invoice page also offers a card/Apple-Pay on-ramp (Guardarian/Banxa) — storefront copy left as-is by owner decision.*
 
 ---
 
@@ -151,7 +145,7 @@ Free gift `bac-water-free` ($0) auto-added when subtotal ≥ **$100** (`FREE_GIF
 **Project ID:** `mddgtvwcwsmlbwiafdvq` (us-west-2)
 
 - `inventory(cart_code PK, stock INT CHECK ≥0, is_active BOOL, updated_at)` — availability is **stock-driven** (`stock=0` disables Add to Cart). `is_active` retained but unused.
-- `orders(id PK, email, items JSONB, shipping_address JSONB, gross_amount, discount_amount, net_amount, shipping_amount, discount_code, discount_breakdown JSONB, credit_applied, referral_code, affiliate_id, commission_amount, status CHECK IN pending/confirmed/finished/failed/cancelled, payment_method (crypto|square|zelle|cashapp|venmo|ach|null), fulfillment_status CHECK IN unfulfilled/shipped/delivered, tracking_number, carrier, label_url, shipped_at, delivered_at, cancelled_at, cancel_reason, admin_notes, pay_currency, pay_amount, payment_id, confirmed_at, created_at, emails_sent JSONB, attestation JSONB)` — `status` = payment lifecycle, `fulfillment_status` = shipping (orthogonal). `shipping_amount` = shipping fee **plus** any opted-in Shipping Protection. `emails_sent` = `{event: ISO ts}` idempotency log (claimed atomically BEFORE sending via `claim_email`; a failed send releases the claim). `attestation` = `{accepted, at, ip, version}` — durable record of the checkout 21+/research-use acknowledgment (null on legacy orders).
+- `orders(id PK, email, items JSONB, shipping_address JSONB, gross_amount, discount_amount, net_amount, shipping_amount, discount_code, discount_breakdown JSONB, credit_applied, referral_code, affiliate_id, commission_amount, status CHECK IN pending/confirmed/finished/failed/cancelled, payment_method (crypto|zelle|cashapp|venmo|ach|null; the `square` value is retained by the CHECK for historical rows only), fulfillment_status CHECK IN unfulfilled/shipped/delivered, tracking_number, carrier, label_url, shipped_at, delivered_at, cancelled_at, cancel_reason, admin_notes, pay_currency, pay_amount, payment_id, confirmed_at, created_at, emails_sent JSONB, attestation JSONB)` — `status` = payment lifecycle, `fulfillment_status` = shipping (orthogonal). `shipping_amount` = shipping fee **plus** any opted-in Shipping Protection. `emails_sent` = `{event: ISO ts}` idempotency log (claimed atomically BEFORE sending via `claim_email`; a failed send releases the claim). `attestation` = `{accepted, at, ip, version}` — durable record of the checkout 21+/research-use acknowledgment (null on legacy orders).
 - `affiliates(id UUID PK, user_id→auth.users, code UNIQUE, discount_percent, commission_percent, name, email, created_at)`
 - `affiliate_payouts(id UUID PK, affiliate_id→affiliates, amount>0, note, created_at)` — owed = Σ commission on paid orders − Σ payouts.
 - `promo_codes(id UUID PK, code UNIQUE, percent_off 1-100, min_subtotal, max_uses NULL=∞, used_count, per_customer_limit (default 1, 0=∞), starts_at, expires_at, is_active, created_at)` — **per-customer cap** = `per_customer_limit` (enforced via `promoRedemptionCount`, counting paid orders since the promo's `created_at`; affiliate codes unlimited). Deleting a code clears its `discount_redemptions` and the historical scan is bounded by `created_at`, so **delete+recreate resets the limit for everyone**. `used_count` is bumped **inline inside the `confirm_order_paid` transaction** (guarded by `max_uses`).
@@ -166,7 +160,7 @@ Free gift `bac-water-free` ($0) auto-added when subtotal ≥ **$100** (`FREE_GIF
 
 **Key RPCs:** `confirm_order_paid` / `cancel_order` (the WHOLE payment claim + stock + promo mutation as one Postgres transaction — cancel restocks only unfulfilled paid orders); `decrement_stock`/`increment_stock` (atomic, raise on insufficient); `claim_email`/`release_email_claim` (atomic claim-before-send email idempotency); `record_affiliate_payout` (capped at outstanding under advisory lock); `store_credit_balance` (excludes dead-order entries); `reserve_store_credit` (atomic check-and-reserve; idempotent per order); `reserve_discount_redemption`/`release_discount_redemption`/`sweep_discount_redemptions`; `rate_limit_hit`.
 
-**Scheduled jobs (pg_cron):** `expire_stale_orders()` hourly cancels unpaid orders past their **method-aware window** — automated invoices (crypto/square/legacy null) at **24h**, manual transfers (zelle/cashapp/venmo/ach) at **4 days** — releasing reserved store credit. `email-cron` hourly → pg_net POST to `/api/cron` (CRON_SECRET) which also expires + emails cancellations (idempotent).
+**Scheduled jobs (pg_cron):** `expire_stale_orders()` hourly cancels unpaid orders past their **method-aware window** — automated invoices (crypto/legacy null) at **24h**, manual transfers (zelle/cashapp/venmo/ach) at **4 days** — releasing reserved store credit. `email-cron` hourly → pg_net POST to `/api/cron` (CRON_SECRET) which also expires + emails cancellations (idempotent).
 
 **RLS:** `inventory` anon-read; `products` anon-read where `is_active`; `affiliates` own-row; everything else (`orders`, `admins`, `affiliate_payouts`, `promo_codes`, `store_settings`, `store_credit_ledger`, `referral_codes`, `stock_waitlist`, `discount_redemptions`, `rate_limits`) is service-role only (RLS on, zero policies = deny-all).
 
@@ -178,13 +172,6 @@ Free gift `bac-water-free` ($0) auto-added when subtotal ≥ **$100** (`FREE_GIF
 # Server (Vercel; SUPABASE_URL + SERVICE_ROLE_KEY auto-injected by the connector)
 SUPABASE_URL= / SUPABASE_SERVICE_ROLE_KEY=
 NOWPAYMENTS_API_KEY= / NOWPAYMENTS_IPN_SECRET=
-# Square (live card processing) — server charge + VITE_ client tokenization (envs must match)
-SQUARE_ACCESS_TOKEN=                # server access token (production or sandbox)
-SQUARE_LOCATION_ID=                 # location the payment is attributed to
-SQUARE_ENVIRONMENT=production       # "production" | "sandbox" — production in the current Vercel deployment
-VITE_SQUARE_APPLICATION_ID=         # Web Payments SDK app id (in-browser card tokenization)
-VITE_SQUARE_LOCATION_ID=            # client location id
-VITE_SQUARE_ENVIRONMENT=production  # "production" | "sandbox" — currently matches SQUARE_ENVIRONMENT; VITE_ → redeploy
 PAYMENT_EMAIL=                      # OPTIONAL override for "I've Sent the Payment" alerts. Falls back to
                                     # ORDERS_EMAIL → GMAIL_USER. No dedicated payments mailbox is planned.
 # Manual P2P handles (Zelle/Cash App/Venmo/ACH) are NOT env vars — they live in store_settings.payment_config
@@ -213,7 +200,7 @@ Missing required vars fail loudly via `requireEnv()` (names the var + the featur
 - Dark mode: `class` strategy via `ThemeContext`; `.dark` overrides in `client/src/index.css` target specific oklch values. Dark section headers (`bg-[oklch(0.13_0.01_260)]`) intentionally stay dark. Active/selected pills use `dark:bg-[oklch(0.40_0.16_260)]` cobalt.
 - **Soft pastel canvas:** global `--background` is a barely-tinted lavender-white; `.bg-page` (+ its `.dark` override) is applied to storefront page roots. Reusable pastel tint utilities in `index.css` (`.bg-tint-lav/mint/peach/rose/sky` + `.page-hero-tint`).
 - **Legibility:** `.font-bold` is overridden to `font-weight:800` site-wide; muted-grey text tokens are darkened for contrast; error text is `red-600` (AA).
-- **Checkout method tiles** are brand-coloured via `METHOD_STYLE` in `Checkout.tsx` (square=indigo, zelle=purple, cashapp=green, venmo=blue, ach=teal, crypto=bitcoin-orange); the Card tile's accepted-card marks (`CardBrands()`) are forced light so the dark override can't invert them.
+- **Checkout method tiles** are brand-coloured via `METHOD_STYLE` in `Checkout.tsx` (zelle=purple, cashapp=green, venmo=blue, ach=teal, crypto=bitcoin-orange).
 - **Favicon:** full Vitum Lab logo on white — `client/public/favicon.ico` + png sizes + `apple-touch-icon.png`, linked in `client/index.html`.
 - Storefront product/hero art is served as **WebP**. Do not restore the retired multi-megabyte PNG originals.
 - Global cart/cookie-banner/floating-cart transitions use lightweight CSS keyframes in `index.css` — keep them CSS-only (no animation runtime in the initial bundle).
@@ -258,11 +245,11 @@ Customer login is the single entry point (admins land on `/admin` automatically 
 
 ## Shipped Features (all built + live unless noted)
 
-- **Payments** — card (Square) + manual P2P + crypto; see [Payments](#payments).
+- **Payments** — manual P2P + crypto; see [Payments](#payments).
 - **Products** — Supabase `products` table, Admin → Products; images in `product-images` Storage bucket.
 - **Admin dashboard** — Overview KPIs (revenue 30d/all-time, net profit = net − commission, orders-to-fulfill, low-stock, AOV, top sellers, repeat-customer rate, awaiting-payment), daily revenue chart (10/30/60/90d), affiliate commissions-owed breakdown. Backed by `GET /api/admin/summary` (pages 1000 rows at a time).
 - **Order management** — Admin → Orders: cancel (restocks paid), ship, buy label, deliver, **Mark Paid**, recheck, notes, **redact** (PII strip, financial row preserved), per-row **Delete** (hard) + **bulk select** + combined **Label PDF** & **Packing slips** (4×6, `pdf-lib`). Awaiting-payment KPI/filter + payment-method badges.
-- **Transactional emails** (`_lib/email.ts`, idempotent via `orders.emails_sent` + `claim_email`) — welcome, order-received, confirmed + admin new-order alert, shipped, delivered + admin alert, cancelled/expired, failed, affiliate commission (per paid order), affiliate monthly statement (cron 1st @15:00 UTC), post-delivery follow-up (7d). Per-order email log + Resend buttons. `notifyAdmin()` ops alerts (e.g. Square payment anomalies).
+- **Transactional emails** (`_lib/email.ts`, idempotent via `orders.emails_sent` + `claim_email`) — welcome, order-received, confirmed + admin new-order alert, shipped, delivered + admin alert, cancelled/expired, failed, affiliate commission (per paid order), affiliate monthly statement (cron 1st @15:00 UTC), post-delivery follow-up (7d). Per-order email log + Resend buttons. `notifyAdmin()` ops alerts.
 - **Shipping (Shippo, USPS)** — `buy_label` → USPS Ground Advantage, 4×6 PDF; stores label/tracking, sets shipped, emails. **Auto-delivery:** `/api/cron` polls tracking → marks delivered + emails. Token decides test/live.
 - **Discounts** — **promo codes** (Admin → Promos, per-customer cap), **affiliate codes** (unlimited, discount + commission), **site-wide sale** (% off + schedule + storefront countdown `SaleBanner`), **tiered quantity discounts**. Stack server-side; only one code per order.
 - **Loyalty / store credit + referrals** — store-credit wallet (`store_credit_ledger`, derived balance); loyalty % back on cash paid; referral link (`/?ref=CODE`) gives a new referee $ off first order + credits the referrer once the referee pays cash (reward basis = `cashPaidBasis`, credit attributed to shipping first). Auto-applies as tender. Config in Admin → Promos.
@@ -283,7 +270,7 @@ Customer login is the single entry point (admins land on `/admin` automatically 
 
 ## Open / Outstanding
 
-**Payments — current status / remaining owner actions:** Square is live: the server credentials use `SQUARE_ENVIRONMENT=production`, the matching `VITE_SQUARE_*` variables are deployed, and Square is enabled in Admin → Payments. Add each manual handle (Zelle/Cash App/Venmo/ACH) in Admin → Payments to expose it. `SHIPPO_API_KEY` intentionally remains on the demo/test key for now; do not switch it to live until real postage is authorized.
+**Payments — current status / remaining owner actions:** Cards are not accepted; Square was removed in full by owner decision (delete the `SQUARE_*` and `VITE_SQUARE_*` variables from Vercel — nothing reads them). Add each manual handle (Zelle/Cash App/Venmo/ACH) in Admin → Payments to expose it. `SHIPPO_API_KEY` intentionally remains on the demo/test key for now; do not switch it to live until real postage is authorized.
 
 **Security — outstanding owner actions (dashboards, not code):** (1) Supabase Auth → confirm "Confirm email" ON + enable leaked-password protection; (2) Google Cloud → restrict `VITE_GOOGLE_MAPS_API_KEY` by HTTP referrer; (3) assess the Supabase `pg_net` extension warning during a maintenance window.
 
@@ -295,10 +282,10 @@ Customer login is the single entry point (admins land on `/admin` automatically 
 
 Decisions/actions only the owner can take — do NOT build around them without sign-off.
 
-1. **Payment-rail survival (highest business risk):** Zelle/Venmo/Cash App consumer AUPs prohibit research-chemical sales and freeze accounts holding business-pattern inflows; Square can hold reserves/offboard high-risk categories. Action: processor-risk review — prefer business Zelle via a business bank + a high-risk-friendly card processor; sweep balances out daily; retain representment documentation.
+1. **Payment-rail survival (highest business risk):** Zelle/Venmo/Cash App consumer AUPs prohibit research-chemical sales and freeze accounts holding business-pattern inflows, and with Square removed these rails now carry ALL non-crypto revenue. Action: processor-risk review — prefer business Zelle via a business bank, and re-evaluate a high-risk-friendly card processor; sweep balances out daily; retain representment documentation.
 2. **Data disaster recovery:** orders + store-credit + affiliate-payout ledgers live in ONE Supabase project behind one service key, with no backup story. Action: enable PITR and/or a nightly logical export of `orders` + ledger tables (can fold into `/api/cron`); write a restore runbook.
 3. **Email deliverability:** all transactional mail rides one Gmail app-password (no SPF/DKIM/DMARC; ~1.5-2k/day cap; the waitlist blast is burst-shaped). A confirmation in spam reads as "my charge failed" → chargebacks. Action: move to an ESP (Resend/Postmark/SES) on a sending subdomain; keep `sendEmail()` as the seam; batch the waitlist blast.
-4. **Analytics:** none exist — conversion, funnel drop-off, and affiliate/referral ROI are unmeasurable. Owner picks a privacy-first vendor (Plausible/PostHog recommended; a Google/Meta pixel risks ad-account bans in this category); wiring is ~1 day and gates on the existing (currently-unread) cookie-consent value.
+4. **Analytics:** only Vercel Web Analytics (pageviews), now gated on the cookie banner via `lib/consent.ts`. Conversion, funnel drop-off, and affiliate/referral ROI remain unmeasurable. Owner picks a privacy-first vendor (Plausible/PostHog recommended; a Google/Meta pixel risks ad-account bans in this category).
 5. **Commission-on-credit policy:** affiliate commission is deliberately net-based regardless of store-credit tender (documented at the charge site in `create-crypto-payment.ts`). Confirm or switch to the cash-paid basis.
 6. **PII retention:** `redact` + data-export are shipped, but no automatic retention window purges old shipping addresses. Decide a window (e.g. anonymize N months post-delivery).
 7. **Fraud/chargeback controls:** checkout has a rate limiter but no order-value ceiling, per-card velocity, or AVS/CVV rejection policy. Decide thresholds before card volume grows.

@@ -1,13 +1,10 @@
-import { squareConfigured } from "./square.js";
-
-export const PAYMENT_METHODS = ["square", "zelle", "cashapp", "venmo", "ach", "crypto"] as const;
+export const PAYMENT_METHODS = ["zelle", "cashapp", "venmo", "ach", "crypto"] as const;
 export const MANUAL_PAYMENT_METHODS = ["zelle", "cashapp", "venmo", "ach"] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type ManualPaymentMethod = (typeof MANUAL_PAYMENT_METHODS)[number];
 
 export type PaymentOffer = {
-  square: { enabled: boolean };
   zelle: ManualOffer;
   cashapp: ManualOffer;
   venmo: ManualOffer;
@@ -45,7 +42,6 @@ export function buildPaymentOffer(raw: unknown): PaymentOffer {
   };
 
   return {
-    square: { enabled: cfg.square?.enabled === true && squareConfigured() },
     zelle: manual("zelle"),
     cashapp: manual("cashapp"),
     venmo: manual("venmo"),
