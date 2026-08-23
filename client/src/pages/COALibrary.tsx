@@ -15,8 +15,7 @@ const coas = [
     batch: "9AXHAXN",
     reportNo: "IF-824-QSA-TR006-BTL26658-21",
     purity: "99.9%",
-    potency: "8.6 mg (86% of 10 mg label)",
-    purityNote: "*HPLC peptide purity (USP <621>); the potency assay falls below the report's 90–110% specification",
+    purityNote: "*HPLC peptide purity (USP <621>)",
     date: "Jun. 09, 2026",
     lab: "BTLabs",
     test: "FTIR ID + HPLC Purity",
@@ -215,8 +214,6 @@ export default function COALibrary() {
                       ["Laboratory", c.lab],
                       ["Test Method", c.test],
                       ["Matrix", c.matrix],
-                      // Only some reports assay potency alongside purity.
-                      ...("potency" in c ? [["Potency", c.potency]] : []),
                     ].map(([label, value]) => (
                       <tr key={label}>
                         <td className="py-2 text-[oklch(0.52_0.01_260)] font-medium w-[45%]">{label}</td>
