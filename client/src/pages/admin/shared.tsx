@@ -7,7 +7,10 @@ import { useState, type ReactNode } from "react";
 import { BarChart3, type LucideIcon } from "lucide-react";
 import type { ShippingAddress } from "./types";
 
-export const BADGE_OPTIONS = ["", "Best Seller", "New", "Limited", "Out of Stock", "Sale"];
+// Badge values offered in Admin → Products. This is a <select>, so every value
+// in use in the DB must appear here — otherwise editing that product silently
+// resets its badge to "None" on save.
+export const BADGE_OPTIONS = ["", "Triple Agonist", "Best Seller", "New", "Limited", "Out of Stock", "Sale"];
 export const CATEGORY_OPTIONS = [
   "Metabolic Research",
   "Cosmetic / Tissue Research",
