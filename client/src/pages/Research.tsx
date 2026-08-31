@@ -94,7 +94,7 @@ const sections: ProductSection[] = [
   },
   {
     name: "GHK-Cu",
-    tagline: "A naturally occurring copper-binding tripeptide with tissue remodeling activity.",
+    tagline: "A naturally occurring copper-binding tripeptide studied in tissue-remodeling and ECM research.",
     accentColor: "bg-[oklch(0.58_0.14_55)]",
     badgeColor: "bg-[oklch(0.95_0.04_55)] text-[oklch(0.38_0.14_55)]",
     badgeText: "IJMS / BioMed",
@@ -167,7 +167,7 @@ export default function Research() {
     <>
       <SEO
         title="Research Library"
-        description="Peer-reviewed studies and clinical literature referenced by the research community for compounds available at Vitum Lab, including Retatrutide, NAD+, and GHK-Cu."
+        description="Peer-reviewed scientific literature referenced by the research community for compounds available at Vitum Lab, including Retatrutide, NAD+, and GHK-Cu."
       />
       <div className="min-h-screen bg-page">
 
@@ -181,7 +181,7 @@ export default function Research() {
               Research Library
             </h1>
             <p className="text-[1rem] text-white/70 max-w-xl leading-relaxed">
-              Peer-reviewed studies and clinical literature referenced by the research community
+              Peer-reviewed scientific literature referenced by the research community
               for compounds available at Vitum Lab.
             </p>
           </div>

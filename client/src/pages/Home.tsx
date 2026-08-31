@@ -539,7 +539,7 @@ export default function Home() {
               description="GLP-1/GIP/Glucagon triple receptor agonist studied for metabolic pathway modulation in preclinical models."
               cardBg="#f5e8e8"
               variants={liveVariants("retatrutide")}
-              badge="Best Seller"
+              badge="Triple Agonist"
               detailHref="/shop/retatrutide"
               fixedLot="A003"
             />

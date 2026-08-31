@@ -42,7 +42,7 @@ export const products: Product[] = [
     longDescription:
       "GLP-3 (R) is a novel triple receptor agonist targeting GLP-1, GIP, and glucagon receptors simultaneously. It is studied in vitro for its receptor-binding pharmacology and metabolic-pathway signaling in preclinical models. Available in three vial sizes to support a range of laboratory study designs.",
     cardBg: "#f5e8e8",
-    badge: "Best Seller",
+    badge: "Triple Agonist",
     variants: [
       {
         id: "retatrutide-10mg",
@@ -98,7 +98,7 @@ export const products: Product[] = [
     description:
       "Glycyl-L-histidyl-L-lysine copper(II) complex studied for tissue remodeling and extracellular matrix research.",
     longDescription:
-      "GHK-Cu is a naturally occurring copper-binding tripeptide with a well-documented research profile in tissue remodeling, wound healing models, and extracellular matrix (ECM) dynamics. It has been studied for its role in collagen synthesis, antioxidant activity, and gene expression modulation in laboratory settings.",
+      "GHK-Cu is a naturally occurring copper-binding tripeptide with a well-documented profile in extracellular matrix (ECM) research. It is studied in vitro for its copper-coordination chemistry, its role in collagen and ECM protein turnover, and gene-expression modulation in laboratory settings.",
     cardBg: "#e0f0ec",
     variants: [
       {
@@ -133,7 +133,7 @@ export const products: Product[] = [
     researchNotes: [
       "Naturally occurring copper-binding tripeptide",
       "Studied for tissue remodeling and ECM dynamics in vitro",
-      "Research interest in collagen synthesis and antioxidant activity",
+      "Research interest in collagen and ECM protein turnover",
       "For in vitro / laboratory research use only",
     ],
     coaHref: "/coa/GHKCU_COA.pdf",
@@ -143,11 +143,11 @@ export const products: Product[] = [
     name: "NAD+",
     fullName: "NAD+ (Nicotinamide Adenine Dinucleotide)",
     category: "Cellular Research",
-    tagline: "Cellular energy metabolism and longevity pathway research",
+    tagline: "Cellular energy metabolism and redox pathway research",
     description:
-      "Research-grade NAD+ for cellular energy metabolism and longevity pathway studies in laboratory settings.",
+      "Research-grade NAD+ for cellular energy metabolism and redox biochemistry studies in laboratory settings.",
     longDescription:
-      "Nicotinamide Adenine Dinucleotide (NAD+) is a critical coenzyme involved in redox reactions, energy metabolism, and cellular signaling. It has been extensively studied in the context of mitochondrial function, DNA repair, and longevity pathways including sirtuins and PARP enzymes.",
+      "Nicotinamide Adenine Dinucleotide (NAD+) is a critical coenzyme involved in redox reactions, energy metabolism, and cellular signaling. It has been extensively studied in the context of mitochondrial function, DNA repair, and sirtuin and PARP enzyme pathways.",
     cardBg: "#faeae0",
     badge: "Out of Stock",
     variants: [
